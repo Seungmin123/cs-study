@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CS Study Dashboard</title>
+  <script src="topics.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0f172a;
+      --surf:    #1e293b;
+      --surf2:   #263448;
+      --border:  #334155;
+      --text:    #e2e8f0;
+      --muted:   #94a3b8;
+      --primary: #818cf8;
+      --pa:      rgba(129,140,248,.13);
+      --green:   #4ade80;
+      --ga:      rgba(74,222,128,.13);
+      --yellow:  #fbbf24;
+      --ya:      rgba(251,191,36,.13);
+      --red:     #f87171;
+      --ra:      rgba(248,113,113,.13);
+      --teal:    #34d399;
+      --ta:      rgba(52,211,153,.13);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+    }
+
+    /* ── Header ──────────────────────────────── */
+    .hd {
+      position: sticky; top: 0; z-index: 50;
+      height: 56px; padding: 0 26px;
+      background: rgba(15,23,42,.96); backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 18px;
+    }
+    .logo { font-size: 16px; font-weight: 800; color: var(--primary); white-space: nowrap; }
+    .logo em { color: var(--text); font-style: normal; font-weight: 400; }
+
+    .prog-wrap { flex: 1; display: flex; align-items: center; gap: 10px; }
+    .prog-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .prog-fill  { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--primary), var(--teal)); transition: width .6s; width: 0; }
+    .prog-label { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+    /* ── Layout ──────────────────────────────── */
+    .wrap {
+      display: grid; grid-template-columns: 248px 1fr;
+      max-width: 1440px; margin: 0 auto;
+      padding: 20px 26px; gap: 20px; align-items: start;
+    }
+
+    /* ── Sidebar ─────────────────────────────── */
+    .sb { position: sticky; top: 76px; display: flex; flex-direction: column; gap: 3px; }
+    .sb-title {
+      font-size: 10px; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--muted);
+      padding: 0 10px; margin-bottom: 5px;
+    }
+    .ch {
+      padding: 9px 11px; border-radius: 8px; cursor: pointer;
+      border: 1px solid transparent; transition: all .15s;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .ch:hover   { background: var(--surf2); }
+    .ch.active  { background: var(--surf2); border-color: var(--primary); }
+    .ch-row { display: flex; align-items: center; gap: 7px; }
+    .ch-num  { font-size: 10px; color: var(--muted); font-family: monospace; width: 18px; flex-shrink: 0; }
+    .ch-name { font-size: 13px; font-weight: 500; flex: 1; line-height: 1.3; }
+    .ch-cnt  { font-size: 11px; color: var(--muted); }
+    .mini-bar  { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .mini-fill { height: 100%; background: var(--primary); border-radius: 2px; transition: width .5s; }
+
+    /* ── Content ─────────────────────────────── */
+    .content { min-width: 0; }
+
+    /* Stats */
+    .stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 16px; }
+    .stat {
+      background: var(--surf); border: 1px solid var(--border);
+      border-radius: 10px; padding: 13px 15px;
+      display: flex; align-items: center; gap: 11px;
+    }
+    .stat-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
+    .stat.g .stat-icon { background: var(--ga); }
+    .stat.y .stat-icon { background: var(--ya); }
+    .stat.r .stat-icon { background: var(--ra); }
+    .sv { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .stat.g .sv { color: var(--green); }
+    .stat.y .sv { color: var(--yellow); }
+    .stat.r .sv { color: var(--red); }
+    .sl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* Filters */
+    .filters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 13px; }
+    .search {
+      flex: 1; min-width: 160px;
+      background: var(--surf); border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 13px;
+      color: var(--text); font-size: 13px; outline: none; transition: border-color .15s;
+    }
+    .search:focus { border-color: var(--primary); }
+    .search::placeholder { color: var(--muted); }
+
+    .chip {
+      padding: 5px 12px; border-radius: 6px;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--muted); font-size: 12px; font-weight: 500;
+      cursor: pointer; transition: all .15s; white-space: nowrap;
+    }
+    .chip:hover { border-color: var(--primary); color: var(--primary); }
+    .chip.on       { background: var(--pa); border-color: var(--primary); color: var(--primary); }
+    .chip.on.cg    { background: var(--ga); border-color: var(--green);   color: var(--green); }
+    .chip.on.cy    { background: var(--ya); border-color: var(--yellow);   color: var(--yellow); }
+    .chip.on.cr    { background: var(--ra); border-color: var(--red);      color: var(--red); }
+    .chip.on.ct    { background: var(--ta); border-color: var(--teal);     color: var(--teal); }
+    .sep { width: 1px; height: 16px; background: var(--border); flex-shrink: 0; }
+
+    .rinfo { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+
+    /* Grid */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(288px,1fr)); gap: 10px; }
+
+    .card {
+      background: var(--surf); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px; cursor: pointer;
+      transition: all .15s; display: flex; flex-direction: column; gap: 8px;
+    }
+    .card:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: 0 6px 22px rgba(0,0,0,.35); }
+    .card.done  { border-left: 3px solid var(--teal); }
+
+    .card-top { display: flex; align-items: center; gap: 7px; }
+    .badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
+    .badge.초급 { background: var(--ga); color: var(--green); }
+    .badge.중급 { background: var(--ya); color: var(--yellow); }
+    .badge.고급 { background: var(--ra); color: var(--red); }
+    .cid  { font-size: 10px; color: var(--muted); font-family: monospace; }
+    .chk  { margin-left: auto; color: var(--teal); font-size: 13px; }
+
+    .card-q {
+      font-size: 13px; line-height: 1.65; color: var(--text);
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .card-date { font-size: 11px; color: var(--muted); }
+
+    /* Empty */
+    .empty { grid-column: 1/-1; text-align: center; padding: 70px 24px; color: var(--muted); }
+    .empty-icon { font-size: 42px; margin-bottom: 12px; }
+    .empty h3   { color: var(--text); margin-bottom: 6px; }
+
+    /* ── Modal ───────────────────────────────── */
+    .overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.65); backdrop-filter: blur(5px);
+      z-index: 100; justify-content: center; align-items: center; padding: 20px;
+    }
+    .overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surf); border: 1px solid var(--border);
+      border-radius: 16px; width: 100%; max-width: 820px; max-height: 90vh; overflow-y: auto;
+    }
+
+    .mhead {
+      padding: 20px 24px 16px; position: sticky; top: 0;
+      background: var(--surf); border-radius: 16px 16px 0 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .mmeta { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; flex-wrap: wrap; }
+    .ch-tag { font-size: 11px; color: var(--muted); background: var(--surf2); padding: 2px 8px; border-radius: 4px; }
+    .mclose {
+      margin-left: auto; background: none; border: none; color: var(--muted);
+      font-size: 18px; cursor: pointer; width: 28px; height: 28px;
+      border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: all .15s;
+    }
+    .mclose:hover { background: var(--surf2); color: var(--text); }
+    .mq { font-size: 16px; font-weight: 700; line-height: 1.55; }
+
+    .mbody { padding: 20px 24px; }
+
+    .no-ans { text-align: center; padding: 36px; color: var(--muted); font-size: 14px; line-height: 1.8; }
+    .no-ans small { font-size: 12px; display: block; margin-top: 8px; opacity: .65; }
+
+    /* ── Markdown ────────────────────────────── */
+    .md { font-size: 14px; line-height: 1.8; }
+
+    .md h3 {
+      font-size: 11px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--muted);
+      margin: 20px 0 9px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
+    }
+    .md h3:first-child { margin-top: 0; }
+    .md h2 { font-size: 15px; font-weight: 700; margin: 16px 0 8px; }
+
+    .md p  { margin-bottom: 9px; }
+    .md ul { padding-left: 20px; margin-bottom: 9px; }
+    .md li { margin-bottom: 4px; }
+
+    .md pre {
+      background: #0d1117; border: 1px solid var(--border);
+      border-radius: 8px; padding: 15px; overflow-x: auto; margin: 11px 0;
+    }
+    .md pre code {
+      font-family: 'JetBrains Mono','Fira Code',monospace;
+      font-size: 13px; line-height: 1.7; color: #c9d1d9; background: none; padding: 0;
+    }
+    .md :not(pre) > code {
+      background: rgba(110,118,129,.18); padding: 1px 6px;
+      border-radius: 4px; font-size: 13px; color: var(--primary); font-family: monospace;
+    }
+
+    .md table { width: 100%; border-collapse: collapse; margin: 11px 0; font-size: 13px; }
+    .md th, .md td { padding: 7px 11px; border: 1px solid var(--border); text-align: left; }
+    .md th { background: var(--surf2); font-weight: 600; color: var(--muted); }
+    .md tr:nth-child(even) td { background: rgba(255,255,255,.02); }
+    .md strong { font-weight: 600; }
+
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<header class="hd">
+  <div class="logo">CS Study <em>Dashboard</em></div>
+  <div class="prog-wrap">
+    <div class="prog-track"><div class="prog-fill" id="pFill"></div></div>
+    <span class="prog-label" id="pLabel"></span>
+  </div>
+</header>
+
+<div class="wrap">
+  <aside class="sb" id="sb"></aside>
+  <main class="content">
+    <div class="stats"   id="stats"></div>
+    <div class="filters" id="filters"></div>
+    <div class="rinfo"   id="rinfo"></div>
+    <div class="grid"    id="grid"></div>
+  </main>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="mhead" id="mhead"></div>
+    <div class="mbody" id="mbody"></div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────
+let flat = [];
+let selCh  = 'all', selLv = 'all', selSt = 'all', q = '';
+
+const EMOJI = {
+  data_structures:'🌲', os:'💻', networking:'🌐', database:'🗄️',
+  computer_architecture:'⚙️', software_design:'📐',
+  system_design:'🏗️', java:'☕', spring:'🍃'
+};
+
+// ── Init ───────────────────────────────────────────────────────
+(function init() {
+  if (typeof TOPICS === 'undefined') {
+    document.getElementById('grid').innerHTML =
+      `<div class="empty"><div class="empty-icon">⚠️</div>
+       <h3>topics.js를 불러올 수 없습니다</h3>
+       <p>index.html과 topics.js가 같은 폴더에 있는지 확인하세요.</p></div>`;
+    document.getElementById('pLabel').textContent = '로드 실패';
+    return;
+  }
+  for (const [k, ch] of Object.entries(TOPICS.chapters))
+    for (const t of ch.topics)
+      flat.push({ chKey: k, chTitle: ch.title, ...t });
+  render();
+})();
+
+// ── Render ─────────────────────────────────────────────────────
+function render() {
+  renderHeader(); renderSb(); renderStats(); renderFilters(); renderGrid();
+}
+
+function renderHeader() {
+  const done = flat.filter(t => t.covered).length, total = flat.length;
+  const pct  = total ? Math.round(done / total * 100) : 0;
+  document.getElementById('pFill').style.width = pct + '%';
+  document.getElementById('pLabel').textContent = `${done} / ${total} 완료 (${pct}%)`;
+}
+
+function renderSb() {
+  const el = document.getElementById('sb');
+  el.innerHTML = `<div class="sb-title">챕터</div>`;
+
+  const mk = (key, name, num, total, done) => {
+    const pct = total ? done / total * 100 : 0;
+    const d = document.createElement('div');
+    d.className = 'ch' + (selCh === key ? ' active' : '');
+    d.innerHTML = `
+      <div class="ch-row">
+        <span class="ch-num">${num}</span>
+        <span class="ch-name">${name}</span>
+        <span class="ch-cnt">${done}/${total}</span>
+      </div>
+      ${num !== '전체' ? `<div class="mini-bar"><div class="mini-fill" style="width:${pct}%"></div></div>` : ''}`;
+    d.onclick = () => { selCh = key; render(); };
+    el.appendChild(d);
+  };
+
+  mk('all', '전체 보기', '전체', flat.length, flat.filter(t => t.covered).length);
+  let n = 1;
+  for (const [k, ch] of Object.entries(TOPICS.chapters)) {
+    const ts = ch.topics, done = ts.filter(t => t.covered).length;
+    mk(k, `${EMOJI[k]||''} ${ch.title}`, String(n++).padStart(2,'0'), ts.length, done);
+  }
+}
+
+function renderStats() {
+  const sc = selCh === 'all' ? flat : flat.filter(t => t.chKey === selCh);
+  const mk = (lv, cls, icon, lbl) => {
+    const all = sc.filter(t => t.level === lv), done = all.filter(t => t.covered);
+    return `<div class="stat ${cls}">
+      <div class="stat-icon">${icon}</div>
+      <div><div class="sv">${done.length}<span style="font-size:13px;opacity:.4">/${all.length}</span></div>
+      <div class="sl">${lbl} 완료</div></div></div>`;
+  };
+  document.getElementById('stats').innerHTML =
+    mk('초급','g','🟢','초급') + mk('중급','y','🟡','중급') + mk('고급','r','🔴','고급');
+}
+
+function renderFilters() {
+  const el = document.getElementById('filters');
+  const c = (v, cur, extra='') => `class="chip${cur===v?' on '+extra:''}"`;
+  el.innerHTML = `
+    <input class="search" placeholder="🔍 검색…" value="${esc(q)}" id="sq">
+    <button ${c('all', selSt)}        data-st="all">전체</button>
+    <button ${c('done',selSt,'ct')}   data-st="done">✅ 완료</button>
+    <button ${c('todo',selSt)}        data-st="todo">⬜ 미완료</button>
+    <span class="sep"></span>
+    <button ${c('all', selLv)}        data-lv="all">전체 난이도</button>
+    <button ${c('초급',selLv,'cg')}   data-lv="초급">초급</button>
+    <button ${c('중급',selLv,'cy')}   data-lv="중급">중급</button>
+    <button ${c('고급',selLv,'cr')}   data-lv="고급">고급</button>`;
+
+  document.getElementById('sq').oninput = e => { q = e.target.value; renderGrid(); };
+  el.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { selSt = b.dataset.st; renderFilters(); renderGrid(); });
+  el.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => { selLv = b.dataset.lv; renderFilters(); renderGrid(); renderStats(); });
+}
+
+function filtered() {
+  return flat.filter(t => {
+    if (selCh !== 'all' && t.chKey !== selCh)   return false;
+    if (selLv !== 'all' && t.level !== selLv)   return false;
+    if (selSt === 'done' && !t.covered)          return false;
+    if (selSt === 'todo' && t.covered)           return false;
+    if (q && !t.question.includes(q))            return false;
+    return true;
+  });
+}
+
+function renderGrid() {
+  const items = filtered();
+  document.getElementById('rinfo').textContent = `${items.length}개 주제`;
+  const grid = document.getElementById('grid');
+
+  if (!items.length) {
+    grid.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><h3>해당하는 주제가 없습니다</h3><p>조건을 변경해보세요.</p></div>`;
+    return;
+  }
+  grid.innerHTML = items.map(t => `
+    <div class="card${t.covered?' done':''}" data-id="${t.id}">
+      <div class="card-top">
+        <span class="badge ${t.level}">${t.level}</span>
+        <span class="cid">${t.id}</span>
+        ${t.covered ? '<span class="chk">✓</span>' : ''}
+      </div>
+      <div class="card-q">${esc(t.question)}</div>
+      ${t.coveredAt ? `<div class="card-date">📅 ${t.coveredAt}</div>` : ''}
+    </div>`).join('');
+
+  grid.querySelectorAll('.card').forEach(c =>
+    c.onclick = () => openModal(flat.find(t => t.id === c.dataset.id))
+  );
+}
+
+// ── Modal ──────────────────────────────────────────────────────
+function openModal(t) {
+  document.getElementById('mhead').innerHTML = `
+    <div class="mmeta">
+      <span class="ch-tag">${EMOJI[t.chKey]||''} ${t.chTitle}</span>
+      <span class="badge ${t.level}">${t.level}</span>
+      <span style="font-size:10px;color:var(--muted);font-family:monospace">${t.id}</span>
+      <button class="mclose" id="mcBtn">✕</button>
+    </div>
+    <div class="mq">${esc(t.question)}</div>`;
+
+  document.getElementById('mbody').innerHTML = (t.covered && t.answer)
+    ? `<div class="md">${parseMd(t.answer)}</div>`
+    : `<div class="no-ans">
+        ${t.covered ? '⚠️ 완료됐지만 답변이 저장되지 않았습니다.' : '📝 아직 학습하지 않은 주제입니다.'}
+        <small>Claude Code에서 "문제 내줘"를 입력하면 질문과 답변이 함께 저장됩니다.</small>
+       </div>`;
+
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('mcBtn').onclick = closeModal;
+}
+function closeModal() { document.getElementById('overlay').classList.remove('open'); }
+document.getElementById('overlay').onclick = e => { if (e.target.id === 'overlay') closeModal(); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+// ── Markdown ───────────────────────────────────────────────────
+function parseMd(src) {
+  const lines = src.split('\n');
+  let html = '', i = 0;
+  while (i < lines.length) {
+    const ln = lines[i];
+
+    // 코드 블록
+    if (/^```/.test(ln.trimStart())) {
+      const lang = ln.trim().slice(3).trim();
+      let code = ''; i++;
+      while (i < lines.length && !/^```/.test(lines[i].trimStart())) { code += esc(lines[i]) + '\n'; i++; }
+      html += `<pre><code class="lang-${lang}">${code.trimEnd()}</code></pre>`; i++; continue;
+    }
+
+    // 표
+    if (ln.includes('|') && i+1 < lines.length && /^\|[\s\-|:]+\|/.test(lines[i+1])) {
+      const th = ln.split('|').filter(c=>c.trim()).map(c=>`<th>${inl(c.trim())}</th>`).join('');
+      i += 2; let rows = '';
+      while (i < lines.length && lines[i].includes('|')) {
+        rows += `<tr>${lines[i].split('|').filter(c=>c.trim()).map(c=>`<td>${inl(c.trim())}</td>`).join('')}</tr>`; i++;
+      }
+      html += `<table><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table>`; continue;
+    }
+
+    // 헤딩
+    const h3 = ln.match(/^### (.+)/), h2 = ln.match(/^## (.+)/), h1 = ln.match(/^# (.+)/);
+    if (h3) { html += `<h3>${inl(h3[1])}</h3>`; i++; continue; }
+    if (h2) { html += `<h2>${inl(h2[1])}</h2>`; i++; continue; }
+    if (h1) { html += `<h1>${inl(h1[1])}</h1>`; i++; continue; }
+
+    // 목록
+    if (/^[-*] /.test(ln)) {
+      let items = '';
+      while (i < lines.length && /^[-*] /.test(lines[i])) { items += `<li>${inl(lines[i].slice(2))}</li>`; i++; }
+      html += `<ul>${items}</ul>`; continue;
+    }
+
+    if (!ln.trim()) { i++; continue; }
+    html += `<p>${inl(ln)}</p>`; i++;
+  }
+  return html;
+}
+
+function inl(s) {
+  return esc(s)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

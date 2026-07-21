@@ -1,0 +1,15 @@
+# OS / editor
+.DS_Store
+
+# Claude Code local settings
+.claude/
+
+# 백업
+*.bak
+
+# 해설 채우기용 스테이징 산출물 (사이트 구동에 불필요)
+answers_*.json
+new_*.json
+os_*.json
+net_*.json
+spring_*.json
