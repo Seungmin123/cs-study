@@ -25,18 +25,43 @@
       --ra:      rgba(248,113,113,.13);
       --teal:    #34d399;
       --ta:      rgba(52,211,153,.13);
+      --hd-bg:   rgba(15,23,42,.96);
+      --shadow:  rgba(0,0,0,.35);
+    }
+
+    /* 라이트 테마 오버라이드 */
+    :root[data-theme="light"] {
+      --bg:      #f8fafc;
+      --surf:    #ffffff;
+      --surf2:   #f1f5f9;
+      --border:  #e2e8f0;
+      --text:    #1e293b;
+      --muted:   #64748b;
+      --primary: #6366f1;
+      --pa:      rgba(99,102,241,.10);
+      --green:   #16a34a;
+      --ga:      rgba(22,163,74,.12);
+      --yellow:  #d97706;
+      --ya:      rgba(217,119,6,.12);
+      --red:     #dc2626;
+      --ra:      rgba(220,38,38,.10);
+      --teal:    #0d9488;
+      --ta:      rgba(13,148,136,.12);
+      --hd-bg:   rgba(255,255,255,.92);
+      --shadow:  rgba(15,23,42,.12);
     }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: var(--bg); color: var(--text); min-height: 100vh;
+      transition: background-color .2s, color .2s;
     }
 
     /* ── Header ──────────────────────────────── */
     .hd {
       position: sticky; top: 0; z-index: 50;
       height: 56px; padding: 0 26px;
-      background: rgba(15,23,42,.96); backdrop-filter: blur(10px);
+      background: var(--hd-bg); backdrop-filter: blur(10px);
       border-bottom: 1px solid var(--border);
       display: flex; align-items: center; gap: 18px;
     }
@@ -131,7 +156,7 @@
       border-radius: 10px; padding: 14px; cursor: pointer;
       transition: all .15s; display: flex; flex-direction: column; gap: 8px;
     }
-    .card:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: 0 6px 22px rgba(0,0,0,.35); }
+    .card:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: 0 6px 22px var(--shadow); }
     .card.done  { border-left: 3px solid var(--teal); }
 
     .card-top { display: flex; align-items: center; gap: 7px; }
@@ -253,6 +278,14 @@
       cursor: pointer; flex-shrink: 0; align-items: center; justify-content: center;
     }
     .hamburger:hover { border-color: var(--primary); color: var(--primary); }
+
+    .theme-toggle {
+      flex-shrink: 0; background: none; border: 1px solid var(--border);
+      color: var(--text); width: 36px; height: 34px; border-radius: 8px;
+      font-size: 15px; cursor: pointer; transition: all .15s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .theme-toggle:hover { border-color: var(--primary); color: var(--primary); }
     .sb-backdrop {
       display: none; position: fixed; inset: 0; z-index: 80;
       background: rgba(0,0,0,.55); backdrop-filter: blur(2px);
@@ -301,6 +334,7 @@
     <div class="prog-track"><div class="prog-fill" id="pFill"></div></div>
     <span class="prog-label" id="pLabel"></span>
   </div>
+  <button class="theme-toggle" id="themeToggle" aria-label="테마 전환" title="테마 전환">🌙</button>
 </header>
 
 <div class="sb-backdrop" id="sbBackdrop"></div>
@@ -521,6 +555,22 @@ document.getElementById('hamburger').onclick = () => {
   document.getElementById('sbBackdrop').classList.toggle('open');
 };
 document.getElementById('sbBackdrop').onclick = closeSb;
+
+// ── 다크/라이트 테마 ────────────────────────────────────────────
+const THEME_KEY = 'cs-study:theme';
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  document.getElementById('themeToggle').textContent = t === 'light' ? '☀️' : '🌙';
+  try { localStorage.setItem(THEME_KEY, t); } catch (e) {}
+}
+(function initTheme() {
+  let t;
+  try { t = localStorage.getItem(THEME_KEY); } catch (e) {}
+  if (!t) t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+  applyTheme(t);
+})();
+document.getElementById('themeToggle').onclick = () =>
+  applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
 
 // ── Markdown ───────────────────────────────────────────────────
 function parseMd(src) {
