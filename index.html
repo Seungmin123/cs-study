@@ -57,6 +57,8 @@
       transition: background-color .2s, color .2s;
     }
 
+    :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 4px; }
+
     /* ── Header ──────────────────────────────── */
     .hd {
       position: sticky; top: 0; z-index: 50;
@@ -286,6 +288,11 @@
       display: flex; align-items: center; justify-content: center;
     }
     .theme-toggle:hover { border-color: var(--primary); color: var(--primary); }
+
+    .sb-mgmt { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; }
+    .mgmt-btn { text-align: left; padding: 7px 11px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; transition: all .15s; }
+    .mgmt-btn:hover { background: var(--surf2); color: var(--text); }
+    .mgmt-btn.danger:hover { color: var(--red); border-color: var(--red); }
     .sb-backdrop {
       display: none; position: fixed; inset: 0; z-index: 80;
       background: rgba(0,0,0,.55); backdrop-filter: blur(2px);
@@ -297,7 +304,7 @@
       .hd { padding: 0 14px; gap: 12px; }
       .hamburger { display: flex; }
       .logo { font-size: 15px; }
-      .prog-track { display: none; }
+      .prog-track { min-width: 36px; height: 5px; }
       .prog-label { font-size: 11px; }
 
       .wrap { grid-template-columns: 1fr; padding: 14px; gap: 14px; }
@@ -349,7 +356,7 @@
 </div>
 
 <div class="overlay" id="overlay">
-  <div class="modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="주제 상세">
     <div class="mhead" id="mhead"></div>
     <div class="mbody" id="mbody"></div>
   </div>
@@ -379,6 +386,43 @@ function setCovered(id, val) {
   try { localStorage.setItem(LS_KEY, JSON.stringify(saved)); } catch (e) {}
   render();
 }
+function reapplySaved() {
+  for (const t of flat) {
+    const s = saved[t.id];
+    t.covered   = s ? s.covered   : t._baseCov;
+    t.coveredAt = s ? s.coveredAt  : t._baseAt;
+  }
+}
+function exportProgress() {
+  const blob = new Blob([JSON.stringify(saved, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'cs-study-progress.json'; a.click();
+  URL.revokeObjectURL(url);
+}
+function importProgress(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const obj = JSON.parse(reader.result);
+      if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) throw new Error('형식');
+      saved = obj;
+      try { localStorage.setItem(LS_KEY, JSON.stringify(saved)); } catch (e) {}
+      reapplySaved(); render();
+      alert(`진도를 가져왔습니다. (${Object.keys(saved).length}개 완료 항목)`);
+    } catch (err) { alert('가져오기 실패: 올바른 진도 JSON 파일이 아닙니다.'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+function resetProgress() {
+  if (!confirm('이 기기의 모든 완료 체크를 초기화할까요? (되돌릴 수 없습니다)')) return;
+  saved = {};
+  try { localStorage.removeItem(LS_KEY); } catch (e) {}
+  reapplySaved(); render();
+}
 
 const EMOJI = {
   data_structures:'🌲', os:'💻', networking:'🌐', database:'🗄️',
@@ -400,6 +444,7 @@ const EMOJI = {
     for (const t of ch.topics) {
       const s = saved[t.id];
       flat.push({ chKey: k, chTitle: ch.title, ...t,
+        _baseCov: t.covered, _baseAt: t.coveredAt,
         covered:   s ? s.covered   : t.covered,
         coveredAt: s ? s.coveredAt  : t.coveredAt });
     }
@@ -443,6 +488,20 @@ function renderSb() {
     const ts = ch.topics, done = ts.filter(t => t.covered).length;
     mk(k, `${EMOJI[k]||''} ${ch.title}`, String(n++).padStart(2,'0'), ts.length, done);
   }
+
+  const mgmt = document.createElement('div');
+  mgmt.className = 'sb-mgmt';
+  mgmt.innerHTML = `
+    <div class="sb-title">진도 관리 (이 기기)</div>
+    <button class="mgmt-btn" id="expBtn">⬇️ 내보내기</button>
+    <button class="mgmt-btn" id="impBtn">⬆️ 가져오기</button>
+    <button class="mgmt-btn danger" id="resetBtn">🗑️ 초기화</button>
+    <input type="file" id="impFile" accept="application/json" hidden>`;
+  el.appendChild(mgmt);
+  document.getElementById('expBtn').onclick = exportProgress;
+  document.getElementById('impBtn').onclick = () => document.getElementById('impFile').click();
+  document.getElementById('impFile').onchange = importProgress;
+  document.getElementById('resetBtn').onclick = resetProgress;
 }
 
 function renderStats() {
@@ -483,7 +542,10 @@ function filtered() {
     if (selLv !== 'all' && t.level !== selLv)   return false;
     if (selSt === 'done' && !t.covered)          return false;
     if (selSt === 'todo' && t.covered)           return false;
-    if (q && !t.question.includes(q))            return false;
+    if (q) {
+      const hay = (t.question + ' ' + (t.answer || '')).toLowerCase();
+      if (!hay.includes(q.toLowerCase()))        return false;
+    }
     return true;
   });
 }
@@ -498,7 +560,7 @@ function renderGrid() {
     return;
   }
   grid.innerHTML = items.map(t => `
-    <div class="card${t.covered?' done':''}" data-id="${t.id}">
+    <div class="card${t.covered?' done':''}" data-id="${t.id}" role="button" tabindex="0" aria-label="${esc(t.question)}">
       <div class="card-top">
         <span class="badge ${t.level}">${t.level}</span>
         <span class="cid">${t.id}</span>
@@ -508,9 +570,11 @@ function renderGrid() {
       ${t.coveredAt ? `<div class="card-date">📅 ${t.coveredAt}</div>` : ''}
     </div>`).join('');
 
-  grid.querySelectorAll('.card').forEach(c =>
-    c.onclick = () => openModal(flat.find(t => t.id === c.dataset.id))
-  );
+  grid.querySelectorAll('.card').forEach(c => {
+    const open = () => openModal(flat.find(t => t.id === c.dataset.id));
+    c.onclick = open;
+    c.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
+  });
 }
 
 // ── Modal ──────────────────────────────────────────────────────
@@ -540,8 +604,14 @@ function openModal(t) {
   document.getElementById('overlay').classList.add('open');
   document.getElementById('mcBtn').onclick = closeModal;
   document.getElementById('doneBtn').onclick = () => { setCovered(t.id, !t.covered); openModal(t); };
+  if (!lastFocused) lastFocused = document.activeElement;
+  document.getElementById('mcBtn').focus();
 }
-function closeModal() { document.getElementById('overlay').classList.remove('open'); }
+let lastFocused = null;
+function closeModal() {
+  document.getElementById('overlay').classList.remove('open');
+  if (lastFocused) { lastFocused.focus(); lastFocused = null; }
+}
 document.getElementById('overlay').onclick = e => { if (e.target.id === 'overlay') closeModal(); };
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
