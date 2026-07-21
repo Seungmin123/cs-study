@@ -151,6 +151,18 @@
 
     .rinfo { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
 
+    /* Pagination */
+    .pager { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; margin: 22px 0 8px; }
+    .pg-btn {
+      min-width: 34px; height: 34px; padding: 0 9px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--surf); color: var(--text);
+      font-size: 13px; cursor: pointer; transition: all .15s; font-variant-numeric: tabular-nums;
+    }
+    .pg-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+    .pg-btn.active { background: var(--pa); border-color: var(--primary); color: var(--primary); font-weight: 700; }
+    .pg-btn:disabled { opacity: .4; cursor: default; }
+    .pg-ell { color: var(--muted); align-self: center; padding: 0 2px; }
+
     /* Grid */
     .grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(288px,100%),1fr)); gap: 10px; min-width: 0; }
 
@@ -359,6 +371,7 @@
     <div class="filters" id="filters"></div>
     <div class="rinfo"   id="rinfo"></div>
     <div class="grid"    id="grid"></div>
+    <div class="pager"   id="pager"></div>
   </main>
 </div>
 
@@ -373,6 +386,8 @@
 // ── State ──────────────────────────────────────────────────────
 let flat = [];
 let selCh  = 'all', selLv = 'all', selSt = 'all', q = '';
+let page = 1;
+const PAGE_SIZE = 24;
 
 // 완료 체크는 정적 데이터에 쓸 수 없으므로 브라우저(기기)별 localStorage에 저장.
 // 키는 github.io 공용 오리진 충돌을 피하려고 프로젝트명으로 네임스페이스.
@@ -485,7 +500,7 @@ function renderSb() {
         <span class="ch-cnt">${done}/${total}</span>
       </div>
       ${num !== '전체' ? `<div class="mini-bar"><div class="mini-fill" style="width:${pct}%"></div></div>` : ''}`;
-    d.onclick = () => { selCh = key; render(); closeSb(); };
+    d.onclick = () => { selCh = key; page = 1; render(); closeSb(); };
     el.appendChild(d);
   };
 
@@ -538,9 +553,9 @@ function renderFilters() {
     <button ${c('중급',selLv,'cy')}   data-lv="중급">중급</button>
     <button ${c('고급',selLv,'cr')}   data-lv="고급">고급</button>`;
 
-  document.getElementById('sq').oninput = e => { q = e.target.value; renderGrid(); };
-  el.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { selSt = b.dataset.st; renderFilters(); renderGrid(); });
-  el.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => { selLv = b.dataset.lv; renderFilters(); renderGrid(); renderStats(); });
+  document.getElementById('sq').oninput = e => { q = e.target.value; page = 1; renderGrid(); };
+  el.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { selSt = b.dataset.st; page = 1; renderFilters(); renderGrid(); });
+  el.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => { selLv = b.dataset.lv; page = 1; renderFilters(); renderGrid(); renderStats(); });
 }
 
 function filtered() {
@@ -559,14 +574,26 @@ function filtered() {
 
 function renderGrid() {
   const items = filtered();
-  document.getElementById('rinfo').textContent = `${items.length}개 주제`;
+  const total = items.length;
   const grid = document.getElementById('grid');
+  const pager = document.getElementById('pager');
 
-  if (!items.length) {
+  if (!total) {
+    document.getElementById('rinfo').textContent = `0개 주제`;
     grid.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><h3>해당하는 주제가 없습니다</h3><p>조건을 변경해보세요.</p></div>`;
+    pager.innerHTML = '';
     return;
   }
-  grid.innerHTML = items.map(t => `
+
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (page > pages) page = pages;
+  if (page < 1) page = 1;
+  const start = (page - 1) * PAGE_SIZE;
+  const pageItems = items.slice(start, start + PAGE_SIZE);
+  document.getElementById('rinfo').textContent =
+    `${total}개 주제 · ${start + 1}–${start + pageItems.length} 표시 (${page}/${pages}페이지)`;
+
+  grid.innerHTML = pageItems.map(t => `
     <div class="card${t.covered?' done':''}" data-id="${t.id}" role="button" tabindex="0" aria-label="${esc(t.question)}">
       <div class="card-top">
         <span class="badge ${t.level}">${t.level}</span>
@@ -581,6 +608,41 @@ function renderGrid() {
     const open = () => openModal(flat.find(t => t.id === c.dataset.id));
     c.onclick = open;
     c.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
+  });
+
+  renderPager(pages);
+}
+
+function renderPager(pages) {
+  const el = document.getElementById('pager');
+  if (pages <= 1) { el.innerHTML = ''; return; }
+  const btn = (label, p, o = {}) =>
+    `<button class="pg-btn${o.active ? ' active' : ''}"${o.disabled ? ' disabled' : ''} data-p="${p}" aria-label="${o.aria || label + '페이지'}">${label}</button>`;
+
+  const win = [];
+  const push = n => { if (n >= 1 && n <= pages && !win.includes(n)) win.push(n); };
+  push(1); push(2);
+  for (let i = page - 1; i <= page + 1; i++) push(i);
+  push(pages - 1); push(pages);
+  win.sort((a, b) => a - b);
+
+  let html = btn('‹', page - 1, { disabled: page === 1, aria: '이전 페이지' });
+  let prev = 0;
+  for (const n of win) {
+    if (n - prev > 1) html += `<span class="pg-ell">…</span>`;
+    html += btn(n, n, { active: n === page });
+    prev = n;
+  }
+  html += btn('›', page + 1, { disabled: page === pages, aria: '다음 페이지' });
+  el.innerHTML = html;
+
+  el.querySelectorAll('.pg-btn[data-p]').forEach(b => b.onclick = () => {
+    const p = parseInt(b.dataset.p, 10);
+    if (p >= 1 && p <= pages && p !== page) {
+      page = p;
+      renderGrid();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   });
 }
 
