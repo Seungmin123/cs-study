@@ -149,6 +149,16 @@
     .chip.on.ct    { background: var(--ta); border-color: var(--teal);     color: var(--teal); }
     .sep { width: 1px; height: 16px; background: var(--border); flex-shrink: 0; }
 
+    /* 칩 전체를 한 줄에 고정 — 공간이 모자라면 줄바꿈 대신 가로 스크롤 */
+    .chip-row {
+      display: flex; align-items: center; gap: 6px;
+      flex: 1 1 auto; min-width: 0;
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .chip-row::-webkit-scrollbar { display: none; }
+    .chip { flex-shrink: 0; }
+
     .rinfo { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
 
     /* Pagination */
@@ -372,8 +382,6 @@
 
       .filters { gap: 5px 6px; }
       .search { min-width: 100%; order: -1; }
-      /* 완료상태 칩과 난이도 칩을 각각 다른 줄로 분리 */
-      .sep { flex-basis: 100%; height: 0; width: auto; background: transparent; margin: 2px 0; }
 
       .overlay { padding: 0; align-items: flex-end; }
       .modal { max-width: 100%; max-height: 92vh; border-radius: 16px 16px 0 0; }
@@ -687,16 +695,18 @@ function renderFilters() {
   const c = (v, cur, extra='') => `class="chip${cur===v?' on '+extra:''}"`;
   el.innerHTML = `
     <input class="search" placeholder="🔍 검색…" value="${esc(q)}" id="sq">
-    <button ${c('all', selSt)}        data-st="all">전체</button>
-    <button ${c('done',selSt,'ct')}   data-st="done">✅ 완료</button>
-    <button ${c('todo',selSt)}        data-st="todo">⬜ 미완료</button>
-    <button ${c('flag',selSt,'cy')}   data-st="flag">🔖 확인 필요</button>
-    <button ${c('memo',selSt,'cy')}   data-st="memo">📝 메모</button>
-    <span class="sep"></span>
-    <button ${c('all', selLv)}        data-lv="all">전체 난이도</button>
-    <button ${c('초급',selLv,'cg')}   data-lv="초급">초급</button>
-    <button ${c('중급',selLv,'cy')}   data-lv="중급">중급</button>
-    <button ${c('고급',selLv,'cr')}   data-lv="고급">고급</button>`;
+    <div class="chip-row">
+      <button ${c('all', selSt)}        data-st="all">전체</button>
+      <button ${c('done',selSt,'ct')}   data-st="done">✅ 완료</button>
+      <button ${c('todo',selSt)}        data-st="todo">⬜ 미완료</button>
+      <button ${c('flag',selSt,'cy')}   data-st="flag">🔖 확인 필요</button>
+      <button ${c('memo',selSt,'cy')}   data-st="memo">📝 메모</button>
+      <span class="sep"></span>
+      <button ${c('all', selLv)}        data-lv="all">전체 난이도</button>
+      <button ${c('초급',selLv,'cg')}   data-lv="초급">초급</button>
+      <button ${c('중급',selLv,'cy')}   data-lv="중급">중급</button>
+      <button ${c('고급',selLv,'cr')}   data-lv="고급">고급</button>
+    </div>`;
 
   document.getElementById('sq').oninput = e => { q = e.target.value; page = 1; renderGrid(); };
   el.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { selSt = b.dataset.st; page = 1; renderFilters(); renderGrid(); });
