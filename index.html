@@ -181,7 +181,7 @@
     .badge.중급 { background: var(--ya); color: var(--yellow); }
     .badge.고급 { background: var(--ra); color: var(--red); }
     .cid  { font-size: 10px; color: var(--muted); font-family: monospace; }
-    .chk  { margin-left: auto; color: var(--teal); font-size: 13px; }
+    .chk  { color: var(--teal); font-size: 13px; }
 
     .card-q {
       font-size: 13px; line-height: 1.65; color: var(--text);
@@ -276,9 +276,12 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-    /* ── Done toggle (모달) ───────────────────── */
+    /* ── 모달 액션 버튼 (완료/확인필요/듣기) ───── */
+    .m-acts {
+      margin-left: auto; display: flex; align-items: center;
+      gap: 6px; flex-wrap: wrap; justify-content: flex-end;
+    }
     .done-toggle {
-      margin-left: auto;
       padding: 4px 10px; border-radius: 6px;
       border: 1px solid var(--border); background: transparent;
       color: var(--muted); font-size: 12px; font-weight: 600;
@@ -286,6 +289,33 @@
     }
     .done-toggle:hover { border-color: var(--primary); color: var(--primary); }
     .done-toggle.on { background: var(--ta); border-color: var(--teal); color: var(--teal); }
+    .done-toggle.flag-on { background: var(--ya); border-color: var(--yellow); color: var(--yellow); }
+
+    /* ── 카드 표시(확인필요·완료) + 메모 미리보기 ── */
+    .card-ind { margin-left: auto; display: flex; align-items: center; gap: 5px; font-size: 12px; }
+    .card-memo {
+      font-size: 12px; color: var(--yellow); background: var(--ya);
+      border-radius: 6px; padding: 6px 8px; line-height: 1.5;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden; overflow-wrap: anywhere;
+    }
+
+    /* ── 메모 입력 (모달) ─────────────────────── */
+    .memo-sec { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .memo-title {
+      font-size: 11px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
+      display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+    }
+    .memo-status { font-weight: 400; letter-spacing: 0; text-transform: none; font-size: 11px; }
+    .memo-input {
+      width: 100%; min-height: 74px; resize: vertical;
+      background: var(--surf2); border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 12px; color: var(--text); font-size: 13px; line-height: 1.6;
+      font-family: inherit; outline: none; transition: border-color .15s;
+    }
+    .memo-input:focus { border-color: var(--yellow); }
+    .memo-input::placeholder { color: var(--muted); }
 
     /* ── Hamburger + drawer backdrop ─────────── */
     .hamburger {
@@ -389,11 +419,16 @@ let selCh  = 'all', selLv = 'all', selSt = 'all', q = '';
 let page = 1;
 const PAGE_SIZE = 24;
 
-// 완료 체크는 정적 데이터에 쓸 수 없으므로 브라우저(기기)별 localStorage에 저장.
+// 완료 체크·메모·확인필요는 정적 데이터에 쓸 수 없으므로 브라우저(기기)별 localStorage에 저장.
 // 키는 github.io 공용 오리진 충돌을 피하려고 프로젝트명으로 네임스페이스.
-const LS_KEY = 'cs-study:covered:v1';
-function loadSaved() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (e) { return {}; } }
-let saved = loadSaved();
+const LS_KEY   = 'cs-study:covered:v1';
+const MEMO_KEY = 'cs-study:memos:v1';
+const FLAG_KEY = 'cs-study:flags:v1';
+function loadLS(key) { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch (e) { return {}; } }
+function persist(key, obj) { try { localStorage.setItem(key, JSON.stringify(obj)); } catch (e) {} }
+let saved = loadLS(LS_KEY);   // { id: { covered, coveredAt } }
+let memos = loadLS(MEMO_KEY); // { id: { text, updatedAt } }
+let flags = loadLS(FLAG_KEY); // { id: true }
 function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -405,8 +440,20 @@ function setCovered(id, val) {
   t.coveredAt = val ? todayStr() : null;
   if (val) saved[id] = { covered: true, coveredAt: t.coveredAt };
   else delete saved[id];
-  try { localStorage.setItem(LS_KEY, JSON.stringify(saved)); } catch (e) {}
+  persist(LS_KEY, saved);
   render();
+}
+function setFlagged(id, val) {
+  if (val) flags[id] = true;
+  else delete flags[id];
+  persist(FLAG_KEY, flags);
+  render();
+}
+function setMemo(id, text) {
+  text = text.trim();
+  if (text) memos[id] = { text, updatedAt: todayStr() };
+  else delete memos[id];
+  persist(MEMO_KEY, memos);
 }
 function reapplySaved() {
   for (const t of flat) {
@@ -416,7 +463,8 @@ function reapplySaved() {
   }
 }
 function exportProgress() {
-  const blob = new Blob([JSON.stringify(saved, null, 2)], { type: 'application/json' });
+  const payload = { version: 2, covered: saved, memos: memos, flags: flags };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = 'cs-study-progress.json'; a.click();
@@ -430,19 +478,27 @@ function importProgress(e) {
     try {
       const obj = JSON.parse(reader.result);
       if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) throw new Error('형식');
-      saved = obj;
-      try { localStorage.setItem(LS_KEY, JSON.stringify(saved)); } catch (e) {}
+      if (obj.version === 2) {
+        saved = obj.covered || {}; memos = obj.memos || {}; flags = obj.flags || {};
+      } else {
+        saved = obj; // v1 백업: 완료 체크만 들어 있음. 기존 메모·확인필요는 유지
+      }
+      persist(LS_KEY, saved); persist(MEMO_KEY, memos); persist(FLAG_KEY, flags);
       reapplySaved(); render();
-      alert(`진도를 가져왔습니다. (${Object.keys(saved).length}개 완료 항목)`);
+      alert(`진도를 가져왔습니다. (완료 ${Object.keys(saved).length} · 메모 ${Object.keys(memos).length} · 확인 필요 ${Object.keys(flags).length})`);
     } catch (err) { alert('가져오기 실패: 올바른 진도 JSON 파일이 아닙니다.'); }
   };
   reader.readAsText(file);
   e.target.value = '';
 }
 function resetProgress() {
-  if (!confirm('이 기기의 모든 완료 체크를 초기화할까요? (되돌릴 수 없습니다)')) return;
-  saved = {};
-  try { localStorage.removeItem(LS_KEY); } catch (e) {}
+  if (!confirm('이 기기의 완료 체크·메모·확인 필요 표시를 모두 초기화할까요? (되돌릴 수 없습니다)')) return;
+  saved = {}; memos = {}; flags = {};
+  try {
+    localStorage.removeItem(LS_KEY);
+    localStorage.removeItem(MEMO_KEY);
+    localStorage.removeItem(FLAG_KEY);
+  } catch (e) {}
   reapplySaved(); render();
 }
 
@@ -507,7 +563,8 @@ function renderSb() {
   mk('all', '전체 보기', '전체', flat.length, flat.filter(t => t.covered).length);
   let n = 1;
   for (const [k, ch] of Object.entries(TOPICS.chapters)) {
-    const ts = ch.topics, done = ts.filter(t => t.covered).length;
+    // ch.topics는 원본 데이터라 localStorage 완료 체크가 반영되지 않음 — flat 기준으로 집계
+    const ts = flat.filter(t => t.chKey === k), done = ts.filter(t => t.covered).length;
     mk(k, `${EMOJI[k]||''} ${ch.title}`, String(n++).padStart(2,'0'), ts.length, done);
   }
 
@@ -547,6 +604,8 @@ function renderFilters() {
     <button ${c('all', selSt)}        data-st="all">전체</button>
     <button ${c('done',selSt,'ct')}   data-st="done">✅ 완료</button>
     <button ${c('todo',selSt)}        data-st="todo">⬜ 미완료</button>
+    <button ${c('flag',selSt,'cy')}   data-st="flag">🔖 확인 필요</button>
+    <button ${c('memo',selSt,'cy')}   data-st="memo">📝 메모</button>
     <span class="sep"></span>
     <button ${c('all', selLv)}        data-lv="all">전체 난이도</button>
     <button ${c('초급',selLv,'cg')}   data-lv="초급">초급</button>
@@ -564,8 +623,10 @@ function filtered() {
     if (selLv !== 'all' && t.level !== selLv)   return false;
     if (selSt === 'done' && !t.covered)          return false;
     if (selSt === 'todo' && t.covered)           return false;
+    if (selSt === 'flag' && !flags[t.id])        return false;
+    if (selSt === 'memo' && !memos[t.id])        return false;
     if (q) {
-      const hay = (t.question + ' ' + (t.answer || '')).toLowerCase();
+      const hay = (t.question + ' ' + (t.answer || '') + ' ' + (memos[t.id] ? memos[t.id].text : '')).toLowerCase();
       if (!hay.includes(q.toLowerCase()))        return false;
     }
     return true;
@@ -598,9 +659,13 @@ function renderGrid() {
       <div class="card-top">
         <span class="badge ${t.level}">${t.level}</span>
         <span class="cid">${t.id}</span>
-        ${t.covered ? '<span class="chk">✓</span>' : ''}
+        <span class="card-ind">
+          ${flags[t.id] ? '<span title="추가 확인 필요">🔖</span>' : ''}
+          ${t.covered ? '<span class="chk">✓</span>' : ''}
+        </span>
       </div>
       <div class="card-q">${esc(t.question)}</div>
+      ${memos[t.id] ? `<div class="card-memo">📝 ${esc(memos[t.id].text)}</div>` : ''}
       ${t.coveredAt ? `<div class="card-date">📅 ${t.coveredAt}</div>` : ''}
     </div>`).join('');
 
@@ -648,41 +713,145 @@ function renderPager(pages) {
 
 // ── Modal ──────────────────────────────────────────────────────
 function openModal(t) {
+  stopTTS();
+  let revealed = false;
+
   document.getElementById('mhead').innerHTML = `
     <div class="mmeta">
       <span class="ch-tag">${EMOJI[t.chKey]||''} ${t.chTitle}</span>
       <span class="badge ${t.level}">${t.level}</span>
       <span style="font-size:10px;color:var(--muted);font-family:monospace">${t.id}</span>
-      <button class="done-toggle ${t.covered?'on':''}" id="doneBtn">${t.covered?'✅ 완료됨':'⬜ 완료 표시'}</button>
-      <button class="mclose" id="mcBtn">✕</button>
+      <span class="m-acts">
+        ${'speechSynthesis' in window ? '<button class="done-toggle" id="ttsBtn" title="음성으로 듣기">🔊 듣기</button>' : ''}
+        <button class="done-toggle ${flags[t.id]?'flag-on':''}" id="flagBtn">${flags[t.id]?'🔖 확인 필요':'⬜ 확인 필요'}</button>
+        <button class="done-toggle ${t.covered?'on':''}" id="doneBtn">${t.covered?'✅ 완료됨':'⬜ 완료 표시'}</button>
+        <button class="mclose" id="mcBtn">✕</button>
+      </span>
     </div>
     <div class="mq">${esc(t.question)}</div>`;
 
   const body = document.getElementById('mbody');
+  const memo = memos[t.id];
+  const memoHtml = `
+    <div class="memo-sec">
+      <div class="memo-title">📝 내 메모
+        <span class="memo-status" id="memoStatus">${memo ? '마지막 저장 ' + memo.updatedAt : '자동 저장'}</span>
+      </div>
+      <textarea class="memo-input" id="memoInput" placeholder="이 문제에 대한 메모를 남겨보세요. 입력하면 자동 저장됩니다.">${esc(memo ? memo.text : '')}</textarea>
+    </div>`;
+
   if (t.answer) {
     body.innerHTML = `
-      <button class="reveal-btn" id="revealBtn">💡 정답 보기</button>
-      <div class="reveal-hint">먼저 스스로 답을 떠올려본 뒤 눌러보세요.</div>`;
+      <div id="ansArea">
+        <button class="reveal-btn" id="revealBtn">💡 정답 보기</button>
+        <div class="reveal-hint">먼저 스스로 답을 떠올려본 뒤 눌러보세요.</div>
+      </div>${memoHtml}`;
     document.getElementById('revealBtn').onclick = () => {
-      body.innerHTML = `<div class="md">${parseMd(t.answer)}</div>`;
+      revealed = true;
+      document.getElementById('ansArea').innerHTML = `<div class="md">${parseMd(t.answer)}</div>`;
     };
   } else {
-    body.innerHTML = `<div class="no-ans">📝 아직 해설이 작성되지 않은 주제입니다.</div>`;
+    body.innerHTML = `<div class="no-ans">📝 아직 해설이 작성되지 않은 주제입니다.</div>${memoHtml}`;
   }
+
+  // 메모 자동 저장 (입력 후 0.4초 디바운스)
+  const mInput = document.getElementById('memoInput');
+  let memoTimer;
+  mInput.oninput = () => {
+    clearTimeout(memoTimer);
+    document.getElementById('memoStatus').textContent = '저장 중…';
+    memoTimer = setTimeout(() => {
+      setMemo(t.id, mInput.value);
+      const st = document.getElementById('memoStatus');
+      if (st) st.textContent = memos[t.id] ? '저장됨 · ' + memos[t.id].updatedAt : '저장됨 (비어 있음)';
+      renderGrid();
+    }, 400);
+  };
 
   document.getElementById('overlay').classList.add('open');
   document.getElementById('mcBtn').onclick = closeModal;
-  document.getElementById('doneBtn').onclick = () => { setCovered(t.id, !t.covered); openModal(t); };
+
+  const doneBtn = document.getElementById('doneBtn');
+  doneBtn.onclick = () => {
+    const nowDone = !t.covered;
+    setCovered(t.id, nowDone);
+    if (nowDone) { closeModal(); return; }   // 완료 체크 시 상세 닫기
+    doneBtn.classList.remove('on');
+    doneBtn.textContent = '⬜ 완료 표시';
+  };
+
+  const flagBtn = document.getElementById('flagBtn');
+  flagBtn.onclick = () => {
+    const on = !flags[t.id];
+    setFlagged(t.id, on);
+    flagBtn.classList.toggle('flag-on', on);
+    flagBtn.textContent = on ? '🔖 확인 필요' : '⬜ 확인 필요';
+  };
+
+  const ttsBtn = document.getElementById('ttsBtn');
+  if (ttsBtn) ttsBtn.onclick = () => {
+    if (ttsSpeaking()) { stopTTS(); return; }
+    let text = '문제. ' + t.question;
+    if (revealed && t.answer) text += ' 해설. ' + ttsStrip(t.answer);
+    startTTS(text, ttsBtn);
+  };
+
   if (!lastFocused) lastFocused = document.activeElement;
   document.getElementById('mcBtn').focus();
 }
 let lastFocused = null;
 function closeModal() {
+  stopTTS();
   document.getElementById('overlay').classList.remove('open');
   if (lastFocused) { lastFocused.focus(); lastFocused = null; }
 }
 document.getElementById('overlay').onclick = e => { if (e.target.id === 'overlay') closeModal(); };
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+// ── TTS (브라우저 내장 Web Speech API — 외부 의존성 없음) ────────
+let ttsBtnRef = null;
+function ttsSpeaking() { return ttsBtnRef !== null; }
+function stopTTS() {
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  if (ttsBtnRef) {
+    ttsBtnRef.textContent = '🔊 듣기';
+    ttsBtnRef.classList.remove('on');
+    ttsBtnRef = null;
+  }
+}
+// 마크다운을 읽기 좋은 평문으로: 코드 블록은 건너뛰고 표·서식 기호 제거
+function ttsStrip(md) {
+  return md
+    .replace(/```[\s\S]*?```/g, ' 코드 예시는 화면을 참고하세요. ')
+    .replace(/^\|[\s\-|:]+\|$/gm, '')
+    .replace(/\|/g, ', ')
+    .replace(/^#{1,3}\s*/gm, '')
+    .replace(/[`*_>]/g, '')
+    .replace(/\n+/g, ' ')
+    .replace(/\s{2,}/g, ' ');
+}
+function startTTS(text, btn) {
+  stopTTS();
+  ttsBtnRef = btn;
+  btn.textContent = '⏹ 중지';
+  btn.classList.add('on');
+  // 긴 발화가 중간에 끊기는 브라우저 버그 회피: 문장 단위로 나눠 큐잉
+  const sentences = text.match(/[^.!?。]+[.!?。]?\s*/g) || [text];
+  const queue = [];
+  let buf = '';
+  for (const s of sentences) {
+    if (buf && (buf + s).length > 180) { queue.push(buf); buf = s; }
+    else buf += s;
+  }
+  if (buf.trim()) queue.push(buf);
+  queue.forEach((chunk, idx) => {
+    const u = new SpeechSynthesisUtterance(chunk);
+    u.lang = 'ko-KR';
+    u.rate = 1.05;
+    if (idx === queue.length - 1) u.onend = stopTTS;
+    speechSynthesis.speak(u);
+  });
+}
 
 // ── 모바일 챕터 드로어 ──────────────────────────────────────────
 function closeSb() {
