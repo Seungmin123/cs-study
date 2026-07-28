@@ -451,7 +451,8 @@ function setFlagged(id, val) {
 }
 function setMemo(id, text) {
   text = text.trim();
-  if (text) memos[id] = { text, updatedAt: todayStr() };
+  // updatedAt은 기기 간 병합 시 최신본 판정에 쓰이므로 분 단위까지 기록
+  if (text) memos[id] = { text, updatedAt: new Date().toISOString() };
   else delete memos[id];
   persist(MEMO_KEY, memos);
 }
@@ -500,6 +501,84 @@ function resetProgress() {
     localStorage.removeItem(FLAG_KEY);
   } catch (e) {}
   reapplySaved(); render();
+}
+
+// ── 기기 간 간편 동기화 (클립보드 / 링크) ───────────────────────
+// 진도 전체를 gzip 압축 + base64url로 코드화. 받는 쪽은 덮어쓰지 않고 병합:
+// 완료·확인필요는 합집합, 메모는 updatedAt이 더 최근인 쪽 우선.
+function b64encode(bytes) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64decode(b64) {
+  const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(bin, c => c.charCodeAt(0));
+}
+async function encodeSync() {
+  const bytes = new TextEncoder().encode(JSON.stringify({ version: 2, covered: saved, memos, flags }));
+  if ('CompressionStream' in window) {
+    const buf = await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+    return 'CSSYNC1:' + b64encode(new Uint8Array(buf));
+  }
+  return 'CSSYNC0:' + b64encode(bytes);
+}
+async function decodeSync(str) {
+  str = str.trim();
+  if (str.startsWith('CSSYNC1:')) {
+    const bytes = b64decode(str.slice(8));
+    const buf = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+    return JSON.parse(new TextDecoder().decode(buf));
+  }
+  if (str.startsWith('CSSYNC0:'))
+    return JSON.parse(new TextDecoder().decode(b64decode(str.slice(8))));
+  return JSON.parse(str); // 진도 JSON 파일 내용을 그대로 붙여넣은 경우
+}
+function mergeProgress(obj) {
+  if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) throw new Error('형식');
+  const inc = obj.version === 2 ? obj : { covered: obj, memos: {}, flags: {} };
+  let nCov = 0, nMemo = 0, nFlag = 0;
+  for (const [id, v] of Object.entries(inc.covered || {}))
+    if (!saved[id]) { saved[id] = v; nCov++; }
+  for (const [id, m] of Object.entries(inc.memos || {})) {
+    const cur = memos[id];
+    if (!cur) { memos[id] = m; nMemo++; }
+    else if (String(m.updatedAt || '') > String(cur.updatedAt || '')) { memos[id] = m; nMemo++; }
+  }
+  for (const id of Object.keys(inc.flags || {}))
+    if (!flags[id]) { flags[id] = true; nFlag++; }
+  persist(LS_KEY, saved); persist(MEMO_KEY, memos); persist(FLAG_KEY, flags);
+  reapplySaved(); render();
+  return { nCov, nMemo, nFlag };
+}
+async function copyText(text, msg) {
+  try { await navigator.clipboard.writeText(text); alert(msg); }
+  catch (e) { prompt('자동 복사에 실패했습니다. 아래 내용을 직접 복사하세요.', text); }
+}
+async function applySyncText(text) {
+  try {
+    text = text.trim();
+    const hashIdx = text.indexOf('#sync=');
+    if (hashIdx !== -1) text = text.slice(hashIdx + 6); // 링크를 통째로 붙여넣은 경우
+    const r = mergeProgress(await decodeSync(text));
+    alert(`병합 완료 — 완료 +${r.nCov} · 메모 +${r.nMemo} · 확인 필요 +${r.nFlag}`);
+  } catch (e) { alert('동기화 실패: 올바른 동기화 코드가 아닙니다.'); }
+}
+async function syncCopy() {
+  copyText(await encodeSync(),
+    '동기화 코드를 복사했습니다.\n다른 기기의 "진도 붙여넣기"로 병합하세요.\n(Mac↔iPhone은 같은 Apple 계정이면 복사 직후 바로 붙여넣기 가능)');
+}
+async function syncCopyLink() {
+  const url = location.href.split('#')[0] + '#sync=' + await encodeSync();
+  copyText(url, '동기화 링크를 복사했습니다.\n다른 기기에서 이 링크를 열면 진도가 병합됩니다.');
+}
+async function syncPaste() {
+  let text = '';
+  try { text = await navigator.clipboard.readText(); } catch (e) {}
+  if (!text || !(text.includes('CSSYNC') || text.trim().startsWith('{')))
+    text = prompt('동기화 코드(또는 링크)를 붙여넣으세요.') || '';
+  if (text.trim()) applySyncText(text);
 }
 
 const EMOJI = {
@@ -571,12 +650,19 @@ function renderSb() {
   const mgmt = document.createElement('div');
   mgmt.className = 'sb-mgmt';
   mgmt.innerHTML = `
-    <div class="sb-title">진도 관리 (이 기기)</div>
+    <div class="sb-title">기기 간 동기화</div>
+    <button class="mgmt-btn" id="syncCopyBtn">📋 진도 복사</button>
+    <button class="mgmt-btn" id="syncPasteBtn">📥 진도 붙여넣기 (병합)</button>
+    <button class="mgmt-btn" id="syncLinkBtn">🔗 동기화 링크 복사</button>
+    <div class="sb-title" style="margin-top:12px">진도 관리 (이 기기)</div>
     <button class="mgmt-btn" id="expBtn">⬇️ 내보내기</button>
     <button class="mgmt-btn" id="impBtn">⬆️ 가져오기</button>
     <button class="mgmt-btn danger" id="resetBtn">🗑️ 초기화</button>
     <input type="file" id="impFile" accept="application/json" hidden>`;
   el.appendChild(mgmt);
+  document.getElementById('syncCopyBtn').onclick = syncCopy;
+  document.getElementById('syncPasteBtn').onclick = syncPaste;
+  document.getElementById('syncLinkBtn').onclick = syncCopyLink;
   document.getElementById('expBtn').onclick = exportProgress;
   document.getElementById('impBtn').onclick = () => document.getElementById('impFile').click();
   document.getElementById('impFile').onchange = importProgress;
@@ -735,7 +821,7 @@ function openModal(t) {
   const memoHtml = `
     <div class="memo-sec">
       <div class="memo-title">📝 내 메모
-        <span class="memo-status" id="memoStatus">${memo ? '마지막 저장 ' + memo.updatedAt : '자동 저장'}</span>
+        <span class="memo-status" id="memoStatus">${memo ? '마지막 저장 ' + memo.updatedAt.slice(0,10) : '자동 저장'}</span>
       </div>
       <textarea class="memo-input" id="memoInput" placeholder="이 문제에 대한 메모를 남겨보세요. 입력하면 자동 저장됩니다.">${esc(memo ? memo.text : '')}</textarea>
     </div>`;
@@ -763,7 +849,7 @@ function openModal(t) {
     memoTimer = setTimeout(() => {
       setMemo(t.id, mInput.value);
       const st = document.getElementById('memoStatus');
-      if (st) st.textContent = memos[t.id] ? '저장됨 · ' + memos[t.id].updatedAt : '저장됨 (비어 있음)';
+      if (st) st.textContent = memos[t.id] ? '저장됨 · ' + memos[t.id].updatedAt.slice(0,10) : '저장됨 (비어 있음)';
       renderGrid();
     }, 400);
   };
@@ -879,6 +965,19 @@ function applyTheme(t) {
 })();
 document.getElementById('themeToggle').onclick = () =>
   applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+
+// ── 동기화 링크(#sync=…)로 열린 경우 병합 ───────────────────────
+(async function initSyncFromHash() {
+  if (!location.hash.startsWith('#sync=')) return;
+  const code = decodeURIComponent(location.hash.slice(6));
+  history.replaceState(null, '', location.href.split('#')[0]);
+  try {
+    const obj = await decodeSync(code);
+    if (!confirm('동기화 링크로 열었습니다. 링크에 담긴 진도를 이 기기에 병합할까요?')) return;
+    const r = mergeProgress(obj);
+    alert(`병합 완료 — 완료 +${r.nCov} · 메모 +${r.nMemo} · 확인 필요 +${r.nFlag}`);
+  } catch (e) { alert('동기화 링크를 해석할 수 없습니다.'); }
+})();
 
 // ── Markdown ───────────────────────────────────────────────────
 function parseMd(src) {
