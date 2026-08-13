@@ -8,9 +8,16 @@
 # 백업
 *.bak
 
+# 로컬 TTS 환경 (Qwen3-TTS) — 모델 가중치는 ~/.cache/huggingface 에 별도 저장
+.venv-tts/
+ref/
+
 # 해설 채우기용 스테이징 산출물 (사이트 구동에 불필요)
 answers_*.json
 new_*.json
 os_*.json
 net_*.json
 spring_*.json
+
+# 로컬 TTS 데이터셋 (tools/make_dataset.py 산출, 수 GB)
+dataset/

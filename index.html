@@ -1027,12 +1027,14 @@ function renderTtsPanel() {
     ? ttsVoices.map(v => `<option value="${esc(v.voiceURI)}"${v.voiceURI===ttsPref.voiceURI?' selected':''}>${esc(ttsLabel(v))}</option>`).join('')
     : '<option value="">사용 가능한 음성 없음</option>';
   const rates = [0.8, 0.9, 1, 1.1, 1.25, 1.4];
+  // Android Chrome은 개별 음성을 노출하지 않고 언어 항목 하나만 준다 — 선택지가 없으면 드롭다운을 숨긴다
+  const multi = ttsVoices.length > 1;
   el.innerHTML = `
-    <label>목소리 <select id="ttsVoiceSel">${opts}</select></label>
+    ${multi ? `<label>목소리 <select id="ttsVoiceSel">${opts}</select></label>` : ''}
     <label>속도 <select id="ttsRateSel">${rates.map(r => `<option value="${r}"${r===ttsPref.rate?' selected':''}>${r}x</option>`).join('')}</select></label>
     <label><input type="checkbox" id="ttsAutoChk"${ttsPref.auto?' checked':''}> 🔁 연속 재생 (끝나면 다음 문제)</label>
     <span class="tts-hint" id="ttsHintMsg"></span>`;
-  el.querySelector('#ttsVoiceSel').onchange = e => { ttsPref.voiceURI = e.target.value; saveTts(); stopTTS(); };
+  if (multi) el.querySelector('#ttsVoiceSel').onchange = e => { ttsPref.voiceURI = e.target.value; saveTts(); stopTTS(); };
   el.querySelector('#ttsRateSel').onchange  = e => { ttsPref.rate = parseFloat(e.target.value); saveTts(); };
   el.querySelector('#ttsAutoChk').onchange  = e => {
     ttsPref.auto = e.target.checked; saveTts();
@@ -1114,18 +1116,17 @@ function startTTS(text, btn, onDone) {
   btn.textContent = '⏹ 중지';
   btn.classList.add('on');
   const voice = ttsVoice();
+  let started = false;
   const fire = () => {
     if (session !== ttsSession) return;
     speechSynthesis.resume();          // 일시정지 상태로 남아 있던 경우 대비
     chunks.forEach(queueChunk);
-    // iOS 등에서 사용자 조작 없는 재생이 차단되면 버튼이 '중지'로 멈춰 있게 되므로 되돌린다
+    // 재생이 시작되지 않을 때 안내만 한다. 여기서 취소하면 안 된다 —
+    // 안드로이드 크롬은 speaking/pending 값이 부정확해서, 곧 시작될 발화를 죽인다.
     setTimeout(() => {
-      if (session !== ttsSession) return;
-      if (!speechSynthesis.speaking && !speechSynthesis.pending) {
-        stopTTS();
-        ttsHint('브라우저가 자동 재생을 막았습니다 — 듣기를 다시 눌러주세요.');
-      }
-    }, 1500);
+      if (session !== ttsSession || started) return;
+      ttsHint('재생이 시작되지 않았습니다. 시스템 TTS 엔진·언어 설정을 확인하세요.');
+    }, 3000);
   };
   const queueChunk = (chunk, idx) => {
     const u = new SpeechSynthesisUtterance(chunk);
@@ -1133,6 +1134,7 @@ function startTTS(text, btn, onDone) {
     u.lang  = (voice && voice.lang) || 'ko-KR';
     u.rate  = ttsPref.rate;
     u.pitch = 1;
+    if (idx === 0) u.onstart = () => { started = true; };
     if (idx === chunks.length - 1) {
       u.onend = () => {
         if (session !== ttsSession) return;   // 중지되었거나 다른 발화로 교체됨
