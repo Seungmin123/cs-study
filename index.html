@@ -325,7 +325,6 @@
     }
     .tts-panel select:focus { border-color: var(--primary); }
     .tts-panel input[type=checkbox] { accent-color: var(--primary); width: 14px; height: 14px; }
-    .tts-tip { flex: 1 1 100%; font-size: 11px; line-height: 1.5; color: var(--muted); opacity: .85; }
     .tts-hint { color: var(--primary); font-weight: 600; }
 
     /* ── 카드 표시(확인필요·완료) + 메모 미리보기 ── */
@@ -977,17 +976,6 @@ let ttsBtnRef  = null;
 let ttsSession = 0;      // 세션 토큰 — 중지된 큐의 onend가 다음 발화를 건드리지 못하게 함
 let ttsVoices  = [];
 
-// 실행 중인 OS 판별 — 고품질 음성을 받는 경로가 플랫폼마다 달라서 안내문을 갈라준다
-const TTS_OS = (() => {
-  const ua = navigator.userAgent || '';
-  if (/Android/i.test(ua)) return 'android';
-  // iPadOS 13+ 는 UA가 Macintosh로 보고되므로 터치 지원 여부로 구분
-  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
-  if (/Macintosh|Mac OS X/.test(ua)) return 'mac';
-  if (/Windows/.test(ua)) return 'windows';
-  return 'other';
-})();
-
 // 자연스러운(신경망/프리미엄) 음성을 목록 앞으로 — 기본 선택도 여기서 결정된다
 function ttsScore(v) {
   const n = ((v.name || '') + ' ' + (v.voiceURI || '')).toLowerCase();
@@ -1032,23 +1020,6 @@ function ttsLabel(v) {
   return name + (tags.length ? ` (${tags.join(' · ')})` : '');
 }
 
-// 목소리가 기계적일 때 고품질 음성을 받는 방법 — 브라우저 내장 음성이라 경로가 OS별로 다르다
-function ttsTip() {
-  const guide = {
-    ios: '<b>iOS·iPadOS</b>: 설정 › 손쉬운 사용 › 말하기 콘텐츠 › 음성 › 한국어에서 <b>Yuna(고음질)</b>를 다운로드하면 목록에 나타납니다. ' +
-         'Safari·Chrome 모두 같은 시스템 음성을 씁니다.',
-    android: '<b>Android</b>: 설정 › 시스템 › 언어 및 입력 › 텍스트 음성 변환 출력에서 엔진을 <b>Google 음성 서비스</b>로 두고 한국어 음성 데이터를 설치하세요. ' +
-             '삼성 기기 기본값(삼성 TTS)보다 <b>Google 한국의</b> 음성이 더 자연스럽습니다. 목록이 비어 있으면 Chrome을 최신 버전으로 업데이트하세요.',
-    mac: '<b>macOS</b>: 시스템 설정 › 손쉬운 사용 › 음성 콘텐츠 › 시스템 음성 › 한국어에서 <b>Yuna(프리미엄/향상됨)</b>를 다운로드하세요. ' +
-         'Chrome에서는 목록의 <b>Google 한국의</b> 음성도 자연스럽습니다.',
-    windows: '<b>Windows</b>: 설정 › 시간 및 언어 › 음성에서 한국어 음성(<b>SunHi·InJoon</b>)을 추가하세요. ' +
-             'Edge로 열면 <b>Microsoft … Online (Natural)</b> 신경망 음성을 쓸 수 있어 가장 자연스럽습니다.',
-    other: '브라우저·OS에 설치된 한국어 음성만 사용할 수 있습니다. 목록이 비어 있으면 OS의 음성 데이터를 설치하세요.'
-  }[TTS_OS];
-  return `💡 목록은 이 기기에 설치된 한국어 음성입니다 (자연스러운 순서로 정렬). ${guide}<br>` +
-         `🔁 연속 재생을 켜면 해설이 자동 공개되고, 낭독이 끝나면 현재 필터의 다음 문제로 이어집니다.`;
-}
-
 function renderTtsPanel() {
   const el = document.getElementById('ttsPanel');
   if (!el) return;
@@ -1060,8 +1031,7 @@ function renderTtsPanel() {
     <label>목소리 <select id="ttsVoiceSel">${opts}</select></label>
     <label>속도 <select id="ttsRateSel">${rates.map(r => `<option value="${r}"${r===ttsPref.rate?' selected':''}>${r}x</option>`).join('')}</select></label>
     <label><input type="checkbox" id="ttsAutoChk"${ttsPref.auto?' checked':''}> 🔁 연속 재생 (끝나면 다음 문제)</label>
-    <span class="tts-hint" id="ttsHintMsg"></span>
-    <div class="tts-tip">${ttsTip()}</div>`;
+    <span class="tts-hint" id="ttsHintMsg"></span>`;
   el.querySelector('#ttsVoiceSel').onchange = e => { ttsPref.voiceURI = e.target.value; saveTts(); stopTTS(); };
   el.querySelector('#ttsRateSel').onchange  = e => { ttsPref.rate = parseFloat(e.target.value); saveTts(); };
   el.querySelector('#ttsAutoChk').onchange  = e => {
