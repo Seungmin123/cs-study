@@ -124,10 +124,10 @@
     .stat.r .sv { color: var(--red); }
     .sl { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
-    /* Filters */
-    .filters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 13px; }
+    /* Filters — 검색 / 상태 / 난이도를 각각 별도 줄로 분리 */
+    .filters { display: flex; flex-direction: column; gap: 7px; align-items: stretch; margin-bottom: 13px; }
     .search {
-      flex: 1; min-width: 160px;
+      width: 100%;
       background: var(--surf); border: 1px solid var(--border);
       border-radius: 8px; padding: 6px 13px;
       color: var(--text); font-size: 13px; outline: none; transition: border-color .15s;
@@ -149,7 +149,8 @@
     .chip.on.ct    { background: var(--ta); border-color: var(--teal);     color: var(--teal); }
     .sep { width: 1px; height: 16px; background: var(--border); flex-shrink: 0; }
 
-    /* 칩 전체를 한 줄에 고정 — 공간이 모자라면 줄바꿈 대신 가로 스크롤 */
+    /* 각 줄은 한 줄에 고정 — 공간이 모자라면 줄바꿈 대신 가로 스크롤 */
+    .frow { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .chip-row {
       display: flex; align-items: center; gap: 6px;
       flex: 1 1 auto; min-width: 0;
@@ -158,6 +159,11 @@
     }
     .chip-row::-webkit-scrollbar { display: none; }
     .chip { flex-shrink: 0; }
+    /* 줄 왼쪽 고정 라벨 (스크롤되지 않음) */
+    .frow-label {
+      flex-shrink: 0; font-size: 11px; font-weight: 600; color: var(--muted);
+      width: 34px; letter-spacing: .02em;
+    }
 
     .rinfo { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
 
@@ -300,6 +306,25 @@
     .done-toggle:hover { border-color: var(--primary); color: var(--primary); }
     .done-toggle.on { background: var(--ta); border-color: var(--teal); color: var(--teal); }
     .done-toggle.flag-on { background: var(--ya); border-color: var(--yellow); color: var(--yellow); }
+    .done-toggle.auto-on { background: var(--pa); border-color: var(--primary); color: var(--primary); }
+
+    /* ── 읽어주기 설정 패널 ───────────────────────── */
+    .tts-panel {
+      margin-top: 10px; padding: 10px 12px;
+      border: 1px solid var(--border); border-radius: 8px; background: var(--surf2);
+      display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+      font-size: 12px; color: var(--muted);
+    }
+    .tts-panel label { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .tts-panel select {
+      background: var(--surf); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 4px 7px; font-size: 12px; max-width: 220px; outline: none;
+    }
+    .tts-panel select:focus { border-color: var(--primary); }
+    .tts-panel input[type=checkbox] { accent-color: var(--primary); width: 14px; height: 14px; }
+    .tts-tip { flex: 1 1 100%; font-size: 11px; line-height: 1.5; color: var(--muted); opacity: .85; }
+    .tts-hint { color: var(--primary); font-weight: 600; }
 
     /* ── 카드 표시(확인필요·완료) + 메모 미리보기 ── */
     .card-ind { margin-left: auto; display: flex; align-items: center; gap: 5px; font-size: 12px; }
@@ -380,8 +405,9 @@
 
       .grid { grid-template-columns: minmax(0, 1fr); }
 
-      .filters { gap: 5px 6px; }
-      .search { min-width: 100%; order: -1; }
+      .filters { gap: 6px; }
+      .search { width: 100%; }
+      .frow-label { display: none; }
 
       .overlay { padding: 0; align-items: flex-end; }
       .modal { max-width: 100%; max-height: 92vh; border-radius: 16px 16px 0 0; }
@@ -695,17 +721,24 @@ function renderFilters() {
   const c = (v, cur, extra='') => `class="chip${cur===v?' on '+extra:''}"`;
   el.innerHTML = `
     <input class="search" placeholder="🔍 검색…" value="${esc(q)}" id="sq">
-    <div class="chip-row">
-      <button ${c('all', selSt)}        data-st="all">전체</button>
-      <button ${c('done',selSt,'ct')}   data-st="done">✅ 완료</button>
-      <button ${c('todo',selSt)}        data-st="todo">⬜ 미완료</button>
-      <button ${c('flag',selSt,'cy')}   data-st="flag">🔖 확인 필요</button>
-      <button ${c('memo',selSt,'cy')}   data-st="memo">📝 메모</button>
-      <span class="sep"></span>
-      <button ${c('all', selLv)}        data-lv="all">전체 난이도</button>
-      <button ${c('초급',selLv,'cg')}   data-lv="초급">초급</button>
-      <button ${c('중급',selLv,'cy')}   data-lv="중급">중급</button>
-      <button ${c('고급',selLv,'cr')}   data-lv="고급">고급</button>
+    <div class="frow">
+      <span class="frow-label">상태</span>
+      <div class="chip-row">
+        <button ${c('all', selSt)}        data-st="all">전체</button>
+        <button ${c('done',selSt,'ct')}   data-st="done">✅ 완료</button>
+        <button ${c('todo',selSt)}        data-st="todo">⬜ 미완료</button>
+        <button ${c('flag',selSt,'cy')}   data-st="flag">🔖 확인 필요</button>
+        <button ${c('memo',selSt,'cy')}   data-st="memo">📝 메모</button>
+      </div>
+    </div>
+    <div class="frow">
+      <span class="frow-label">난이도</span>
+      <div class="chip-row">
+        <button ${c('all', selLv)}        data-lv="all">전체</button>
+        <button ${c('초급',selLv,'cg')}   data-lv="초급">초급</button>
+        <button ${c('중급',selLv,'cy')}   data-lv="중급">중급</button>
+        <button ${c('고급',selLv,'cr')}   data-lv="고급">고급</button>
+      </div>
     </div>`;
 
   document.getElementById('sq').oninput = e => { q = e.target.value; page = 1; renderGrid(); };
@@ -808,9 +841,10 @@ function renderPager(pages) {
 }
 
 // ── Modal ──────────────────────────────────────────────────────
-function openModal(t) {
+function openModal(t, autoplay = false) {
   stopTTS();
   let revealed = false;
+  const hasTts = 'speechSynthesis' in window;
 
   document.getElementById('mhead').innerHTML = `
     <div class="mmeta">
@@ -818,13 +852,15 @@ function openModal(t) {
       <span class="badge ${t.level}">${t.level}</span>
       <span style="font-size:10px;color:var(--muted);font-family:monospace">${t.id}</span>
       <span class="m-acts">
-        ${'speechSynthesis' in window ? '<button class="done-toggle" id="ttsBtn" title="음성으로 듣기">🔊 듣기</button>' : ''}
+        ${hasTts ? `<button class="done-toggle" id="ttsBtn" title="음성으로 듣기">${ttsPref.auto?'🔁':'🔊'} 듣기</button>
+        <button class="done-toggle ${ttsPref.auto?'auto-on':''}" id="ttsCfgBtn" title="읽어주기 설정">⚙</button>` : ''}
         <button class="done-toggle ${flags[t.id]?'flag-on':''}" id="flagBtn">${flags[t.id]?'🔖 확인 필요':'⬜ 확인 필요'}</button>
         <button class="done-toggle ${t.covered?'on':''}" id="doneBtn">${t.covered?'✅ 완료됨':'⬜ 완료 표시'}</button>
         <button class="mclose" id="mcBtn">✕</button>
       </span>
     </div>
-    <div class="mq">${esc(t.question)}</div>`;
+    <div class="mq">${esc(t.question)}</div>
+    ${hasTts ? `<div class="tts-panel" id="ttsPanel" hidden></div>` : ''}`;
 
   const body = document.getElementById('mbody');
   const memo = memos[t.id];
@@ -836,16 +872,20 @@ function openModal(t) {
       <textarea class="memo-input" id="memoInput" placeholder="이 문제에 대한 메모를 남겨보세요. 입력하면 자동 저장됩니다.">${esc(memo ? memo.text : '')}</textarea>
     </div>`;
 
+  const reveal = () => {
+    if (revealed || !t.answer) return;
+    revealed = true;
+    const area = document.getElementById('ansArea');
+    if (area) area.innerHTML = `<div class="md">${parseMd(t.answer)}</div>`;
+  };
+
   if (t.answer) {
     body.innerHTML = `
       <div id="ansArea">
         <button class="reveal-btn" id="revealBtn">💡 정답 보기</button>
         <div class="reveal-hint">먼저 스스로 답을 떠올려본 뒤 눌러보세요.</div>
       </div>${memoHtml}`;
-    document.getElementById('revealBtn').onclick = () => {
-      revealed = true;
-      document.getElementById('ansArea').innerHTML = `<div class="md">${parseMd(t.answer)}</div>`;
-    };
+    document.getElementById('revealBtn').onclick = reveal;
   } else {
     body.innerHTML = `<div class="no-ans">📝 아직 해설이 작성되지 않은 주제입니다.</div>${memoHtml}`;
   }
@@ -885,15 +925,37 @@ function openModal(t) {
   };
 
   const ttsBtn = document.getElementById('ttsBtn');
-  if (ttsBtn) ttsBtn.onclick = () => {
-    if (ttsSpeaking()) { stopTTS(); return; }
-    let text = '문제. ' + t.question;
-    if (revealed && t.answer) text += ' 해설. ' + ttsStrip(t.answer);
-    startTTS(text, ttsBtn);
+  const speak = () => {
+    // 연속 재생 중에는 해설까지 읽어야 의미가 있으므로 정답을 자동 공개
+    if (ttsPref.auto) reveal();
+    let text = '문제. ' + t.question.trim().replace(/[.!?。]*$/, '.');
+    if (revealed && t.answer) text += '\n해설.\n' + ttsStrip(t.answer);
+    startTTS(text, ttsBtn, () => { if (ttsPref.auto) ttsAdvance(t.id); });
   };
+  if (ttsBtn) {
+    ttsBtn.onclick = () => { if (ttsSpeaking()) stopTTS(); else speak(); };
+    document.getElementById('ttsCfgBtn').onclick = () => {
+      const p = document.getElementById('ttsPanel');
+      p.hidden = !p.hidden;
+      if (!p.hidden) renderTtsPanel();
+    };
+    renderTtsPanel();
+  }
 
   if (!lastFocused) lastFocused = document.activeElement;
-  document.getElementById('mcBtn').focus();
+  if (autoplay && ttsBtn) speak();
+  else document.getElementById('mcBtn').focus();
+}
+
+// 연속 재생: 현재 필터 목록에서 다음 주제를 열고 이어서 읽는다
+function ttsAdvance(curId) {
+  const items = filtered();
+  const i = items.findIndex(x => x.id === curId);
+  const next = i >= 0 ? items[i + 1] : null;
+  if (!next) { ttsHint('연속 재생 종료 — 현재 필터의 마지막 주제입니다.'); return; }
+  const np = Math.floor((i + 1) / PAGE_SIZE) + 1;   // 목록 페이지도 함께 이동
+  if (np !== page) { page = np; renderGrid(); }
+  openModal(next, true);
 }
 let lastFocused = null;
 function closeModal() {
@@ -905,48 +967,161 @@ document.getElementById('overlay').onclick = e => { if (e.target.id === 'overlay
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 // ── TTS (브라우저 내장 Web Speech API — 외부 의존성 없음) ────────
-let ttsBtnRef = null;
+const TTS_KEY = 'cs-study:tts:v1';
+let ttsPref = Object.assign({ voiceURI: '', rate: 1, auto: false }, loadLS(TTS_KEY));
+function saveTts() { persist(TTS_KEY, ttsPref); }
+
+let ttsBtnRef  = null;
+let ttsSession = 0;      // 세션 토큰 — 중지된 큐의 onend가 다음 발화를 건드리지 못하게 함
+let ttsVoices  = [];
+
+// 자연스러운(신경망/프리미엄) 음성을 목록 앞으로 — 기본 선택도 여기서 결정된다
+function ttsScore(v) {
+  const n = ((v.name || '') + ' ' + (v.voiceURI || '')).toLowerCase();
+  let s = 0;
+  if (/premium|enhanced|neural|natural|siri/.test(n)) s += 40;
+  if (/google/.test(n))                               s += 30;  // Chrome 네트워크 음성 = 억양이 가장 부드러움
+  if (/yuna|sunhi|heami|injoon|nari|jimin/.test(n))   s += 10;
+  if (/compact|eloquence|espeak|novelty/.test(n))     s -= 40;
+  if (v.localService === false)                       s += 5;
+  return s;
+}
+function ttsLoadVoices() {
+  if (!('speechSynthesis' in window)) return;
+  const all = speechSynthesis.getVoices() || [];
+  const ko  = all.filter(v => /^ko\b|^ko[-_]/i.test(v.lang || ''));
+  ttsVoices = (ko.length ? ko : all).slice()
+    .sort((a, b) => ttsScore(b) - ttsScore(a) || (a.name || '').localeCompare(b.name || ''));
+  if (!ttsPref.voiceURI || !ttsVoices.some(v => v.voiceURI === ttsPref.voiceURI))
+    ttsPref.voiceURI = ttsVoices.length ? ttsVoices[0].voiceURI : '';
+}
+if ('speechSynthesis' in window) {
+  ttsLoadVoices();
+  // 음성 목록은 비동기로 채워지므로 도착하면 다시 정렬 + 패널 갱신
+  speechSynthesis.onvoiceschanged = () => { ttsLoadVoices(); renderTtsPanel(); };
+}
+function ttsVoice() { return ttsVoices.find(v => v.voiceURI === ttsPref.voiceURI) || null; }
+
+function renderTtsPanel() {
+  const el = document.getElementById('ttsPanel');
+  if (!el) return;
+  const opts = ttsVoices.length
+    ? ttsVoices.map(v => `<option value="${esc(v.voiceURI)}"${v.voiceURI===ttsPref.voiceURI?' selected':''}>${esc(v.name)}${v.localService===false?' (온라인)':''}</option>`).join('')
+    : '<option value="">사용 가능한 음성 없음</option>';
+  const rates = [0.8, 0.9, 1, 1.1, 1.25, 1.4];
+  el.innerHTML = `
+    <label>목소리 <select id="ttsVoiceSel">${opts}</select></label>
+    <label>속도 <select id="ttsRateSel">${rates.map(r => `<option value="${r}"${r===ttsPref.rate?' selected':''}>${r}x</option>`).join('')}</select></label>
+    <label><input type="checkbox" id="ttsAutoChk"${ttsPref.auto?' checked':''}> 🔁 연속 재생 (끝나면 다음 문제)</label>
+    <span class="tts-hint" id="ttsHintMsg"></span>
+    <div class="tts-tip">💡 목소리가 뚝뚝 끊기면 고품질 음성을 설치해 보세요 —
+      macOS: 시스템 설정 › 손쉬운 사용 › 음성 콘텐츠 › 시스템 음성 › 한국어 <b>Yuna (프리미엄/향상됨)</b> 다운로드.
+      Chrome에서는 목록의 <b>Google 한국의</b> 음성이 가장 자연스럽습니다.
+      연속 재생을 켜면 해설이 자동으로 공개되고 다음 문제로 이어집니다.</div>`;
+  el.querySelector('#ttsVoiceSel').onchange = e => { ttsPref.voiceURI = e.target.value; saveTts(); stopTTS(); };
+  el.querySelector('#ttsRateSel').onchange  = e => { ttsPref.rate = parseFloat(e.target.value); saveTts(); };
+  el.querySelector('#ttsAutoChk').onchange  = e => {
+    ttsPref.auto = e.target.checked; saveTts();
+    const b = document.getElementById('ttsBtn'), c = document.getElementById('ttsCfgBtn');
+    if (b && !ttsSpeaking()) b.textContent = (ttsPref.auto ? '🔁' : '🔊') + ' 듣기';
+    if (c) c.classList.toggle('auto-on', ttsPref.auto);
+  };
+}
+function ttsHint(msg) {
+  const el = document.getElementById('ttsHintMsg');
+  if (el) el.textContent = msg;
+  const p = document.getElementById('ttsPanel');
+  if (p && msg) p.hidden = false;
+}
+
 function ttsSpeaking() { return ttsBtnRef !== null; }
 function stopTTS() {
+  ttsSession++;                                    // 진행 중인 큐의 콜백 무효화
   if ('speechSynthesis' in window) speechSynthesis.cancel();
   if (ttsBtnRef) {
-    ttsBtnRef.textContent = '🔊 듣기';
+    ttsBtnRef.textContent = (ttsPref.auto ? '🔁' : '🔊') + ' 듣기';
     ttsBtnRef.classList.remove('on');
     ttsBtnRef = null;
   }
 }
-// 마크다운을 읽기 좋은 평문으로: 코드 블록은 건너뛰고 표·서식 기호 제거
+
+// 마크다운을 읽기 좋은 평문으로: 코드 블록은 건너뛰고 표·서식 기호 제거,
+// 제목·목록에는 마침표를 넣어 문장 경계를 만든다 (문장 중간에서 끊기지 않게 하는 핵심)
 function ttsStrip(md) {
   return md
-    .replace(/```[\s\S]*?```/g, ' 코드 예시는 화면을 참고하세요. ')
-    .replace(/^\|[\s\-|:]+\|$/gm, '')
-    .replace(/\|/g, ', ')
-    .replace(/^#{1,3}\s*/gm, '')
-    .replace(/[`*_>]/g, '')
-    .replace(/\n+/g, ' ')
-    .replace(/\s{2,}/g, ' ');
+    .replace(/```[\s\S]*?```/g, '\n코드 예시는 화면을 참고하세요.\n')
+    .replace(/`([^`\n]*)`/g, '$1')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^[ \t]*\|[ \t\-|:]+\|[ \t]*$/gm, '')
+    .replace(/^[ \t]*\|(.+?)\|?[ \t]*$/gm, (_, row) =>
+      row.split('|').map(c => c.trim()).filter(Boolean).join(', ') + '.')
+    .replace(/^[ \t]*#{1,6}[ \t]*(.+?)[ \t]*$/gm, '$1.')
+    .replace(/^[ \t]*[-*+][ \t]+(.+?)[ \t]*$/gm, '$1.')
+    .replace(/[*_>~]/g, '')
+    .replace(/[·•]/g, ', ')
+    .replace(/[→⇒➜]/g, ', ')
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{2B00}-\u{2BFF}]/gu, '')
+    .replace(/([.!?。])\s*\1+/g, '$1')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
 }
-function startTTS(text, btn) {
+
+// 발화 단위 분할: 문장 경계에서만 자르고, 한 덩어리를 넉넉히 담아 끊김을 줄인다
+const TTS_MAX = 380;
+function ttsChunks(text) {
+  const pieces = [];
+  for (const s of (text.match(/[^.!?。\n]+[.!?。]*\s*|\n/g) || [text])) {
+    if (s.length <= TTS_MAX) { pieces.push(s); continue; }
+    for (const p of (s.match(/[^,;:、]+[,;:、]?\s*/g) || [s])) {
+      if (p.length <= TTS_MAX) pieces.push(p);
+      else for (let i = 0; i < p.length; i += TTS_MAX) pieces.push(p.slice(i, i + TTS_MAX));
+    }
+  }
+  const out = [];
+  let buf = '';
+  for (const p of pieces) {
+    if (buf && (buf + p).length > TTS_MAX) { out.push(buf.trim()); buf = p; }
+    else buf += p;
+  }
+  if (buf.trim()) out.push(buf.trim());
+  return out.filter(c => /[가-힣A-Za-z0-9]/.test(c));
+}
+
+function startTTS(text, btn, onDone) {
+  // cancel() 직후 speak()하면 첫 발화가 삼켜지는 브라우저가 있어, 필요할 때만 살짝 지연
+  const wasActive = speechSynthesis.speaking || speechSynthesis.pending;
   stopTTS();
+  const session = ++ttsSession;
+  const chunks  = ttsChunks(text);
+  if (!chunks.length) return;
   ttsBtnRef = btn;
   btn.textContent = '⏹ 중지';
   btn.classList.add('on');
-  // 긴 발화가 중간에 끊기는 브라우저 버그 회피: 문장 단위로 나눠 큐잉
-  const sentences = text.match(/[^.!?。]+[.!?。]?\s*/g) || [text];
-  const queue = [];
-  let buf = '';
-  for (const s of sentences) {
-    if (buf && (buf + s).length > 180) { queue.push(buf); buf = s; }
-    else buf += s;
-  }
-  if (buf.trim()) queue.push(buf);
-  queue.forEach((chunk, idx) => {
+  const voice = ttsVoice();
+  const fire = () => {
+    if (session !== ttsSession) return;
+    speechSynthesis.resume();          // 일시정지 상태로 남아 있던 경우 대비
+    chunks.forEach(queueChunk);
+  };
+  const queueChunk = (chunk, idx) => {
     const u = new SpeechSynthesisUtterance(chunk);
-    u.lang = 'ko-KR';
-    u.rate = 1.05;
-    if (idx === queue.length - 1) u.onend = stopTTS;
+    if (voice) u.voice = voice;
+    u.lang  = (voice && voice.lang) || 'ko-KR';
+    u.rate  = ttsPref.rate;
+    u.pitch = 1;
+    if (idx === chunks.length - 1) {
+      u.onend = () => {
+        if (session !== ttsSession) return;   // 중지되었거나 다른 발화로 교체됨
+        stopTTS();
+        if (onDone) onDone();
+      };
+    }
     speechSynthesis.speak(u);
-  });
+  };
+  if (wasActive) setTimeout(fire, 90);
+  else fire();
 }
 
 // ── 모바일 챕터 드로어 ──────────────────────────────────────────
