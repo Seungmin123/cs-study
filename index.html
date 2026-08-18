@@ -934,7 +934,7 @@ function openModal(t, autoplay = false) {
     let text = '문제. ' + t.question.trim().replace(/[.!?。]*$/, '.');
     if (revealed && t.answer) text += '\n해설.\n' + ttsStrip(t.answer);
     text = koreanize(text);   // 영문을 한글 음차로 — 온디바이스 한국어 모델이 읽을 수 있게
-    startTTS(text, ttsBtn, () => { if (ttsPref.auto) ttsAdvance(t.id); });
+    startTTS(text, ttsBtn, () => { if (ttsPref.auto) ttsAdvance(t.id); }, t);
   };
   if (ttsBtn) {
     ttsBtn.onclick = () => { if (ttsSpeaking()) stopTTS(); else speak(); };
@@ -972,7 +972,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 
 // ── TTS (브라우저 내장 Web Speech API — 외부 의존성 없음) ────────
 const TTS_KEY = 'cs-study:tts:v1';
-let ttsPref = Object.assign({ voiceURI: '', rate: 1, auto: false }, loadLS(TTS_KEY));
+let ttsPref = Object.assign({ voiceURI: '', rate: 1, auto: false, gap: 1 }, loadLS(TTS_KEY));
 function saveTts() { persist(TTS_KEY, ttsPref); }
 
 let ttsBtnRef  = null;
@@ -1030,16 +1030,20 @@ function renderTtsPanel() {
     ? ttsVoices.map(v => `<option value="${esc(v.voiceURI)}"${v.voiceURI===ttsPref.voiceURI?' selected':''}>${esc(ttsLabel(v))}</option>`).join('')
     : '<option value="">사용 가능한 음성 없음</option>';
   const rates = [0.8, 0.9, 1, 1.1, 1.25, 1.4];
+  const gaps  = [{ v: 0, t: '짧게' }, { v: 1, t: '보통' }, { v: 2, t: '길게' }];
   // 음성이 하나도 없으면 브라우저가 발화할 대상이 없다는 뜻이라, 개수를 항상 보여준다
   const multi = ttsVoices.length > 0;
   el.innerHTML = `
     ${multi ? `<label>목소리 <select id="ttsVoiceSel">${opts}</select></label>`
             : '<span class="tts-hint">⚠ 브라우저가 감지한 음성 0개</span>'}
     <label>속도 <select id="ttsRateSel">${rates.map(r => `<option value="${r}"${r===ttsPref.rate?' selected':''}>${r}x</option>`).join('')}</select></label>
+    <label>쉼 <select id="ttsGapSel">${gaps.map(g => `<option value="${g.v}"${g.v===ttsPref.gap?' selected':''}>${g.t}</option>`).join('')}</select></label>
     <label><input type="checkbox" id="ttsAutoChk"${ttsPref.auto?' checked':''}> 🔁 연속 재생 (끝나면 다음 문제)</label>
     <span class="tts-hint" id="ttsHintMsg"></span>`;
   if (multi) el.querySelector('#ttsVoiceSel').onchange = e => { ttsPref.voiceURI = e.target.value; saveTts(); stopTTS(); };
   el.querySelector('#ttsRateSel').onchange  = e => { ttsPref.rate = parseFloat(e.target.value); saveTts(); };
+  // 쉼은 문장을 나누는 방식 자체를 바꾸므로 읽던 것을 멈추고 다음 재생부터 적용한다
+  el.querySelector('#ttsGapSel').onchange   = e => { ttsPref.gap = parseInt(e.target.value, 10); saveTts(); stopTTS(); };
   el.querySelector('#ttsAutoChk').onchange  = e => {
     ttsPref.auto = e.target.checked; saveTts();
     const b = document.getElementById('ttsBtn'), c = document.getElementById('ttsCfgBtn');
@@ -1063,7 +1067,91 @@ function stopTTS() {
     ttsBtnRef.classList.remove('on');
     ttsBtnRef = null;
   }
+  ttsKeepStop();
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none';
 }
+
+// ── 백그라운드 재생 (화면 잠금 중에도 계속 듣기) ────────────────
+// 안드로이드 크롬은 '소리를 내지 않는' 탭을 화면이 꺼지면 곧 얼려버리고, 그러면 발화 큐도 멈춘다.
+// 사람 귀에 들리지 않을 만큼 작은 소리(50Hz, 약 -49dBFS)를 계속 재생해 오디오 포커스를
+// 잡아두면 탭이 살아 있고, 잠금화면 미디어 컨트롤(MediaSession)도 함께 붙는다.
+// 완전한 무음은 크롬이 '소리 없음'으로 판정해(임계값 약 -72dBFS) 효과가 없다.
+let ttsKeepEl = null, ttsKeepOff = 0, ttsCurTopic = null;
+
+function ttsKeepSrc() {
+  const rate = 8000, n = rate;          // 1초 · 50Hz 정수 주기 → 이음매 없는 무한 루프
+  const buf = new ArrayBuffer(44 + n * 2), dv = new DataView(buf);
+  const tag = (o, str) => { for (let i = 0; i < str.length; i++) dv.setUint8(o + i, str.charCodeAt(i)); };
+  tag(0, 'RIFF');       dv.setUint32(4, 36 + n * 2, true);
+  tag(8, 'WAVEfmt ');   dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true);  dv.setUint16(22, 1, true);
+  dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true);
+  dv.setUint16(32, 2, true);  dv.setUint16(34, 16, true);
+  tag(36, 'data');      dv.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++)
+    dv.setInt16(44 + i * 2, Math.round(120 * Math.sin(2 * Math.PI * 50 * i / rate)), true);
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+
+function ttsKeepStart() {
+  clearTimeout(ttsKeepOff);
+  if (!ttsKeepEl) {
+    ttsKeepEl = new Audio(ttsKeepSrc());
+    ttsKeepEl.loop = true;
+    ttsKeepEl.volume = 1;               // 볼륨 0 은 '소리 없음'으로 판정된다
+  }
+  const pr = ttsKeepEl.play();
+  if (pr && pr.catch) pr.catch(() => {});  // 자동재생이 막히면 조용히 포기(기존 동작 유지)
+}
+
+function ttsKeepStop() {
+  // 연속 재생에서 다음 문제로 넘어가는 짧은 공백 동안에는 포커스를 놓지 않는다
+  clearTimeout(ttsKeepOff);
+  ttsKeepOff = setTimeout(() => { if (ttsKeepEl && !ttsSpeaking()) ttsKeepEl.pause(); }, 2500);
+}
+
+let ttsArtUrl = '';
+function ttsArt() {
+  if (ttsArtUrl) return ttsArtUrl;
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const x = c.getContext('2d');
+  x.fillStyle = '#0f172a'; x.fillRect(0, 0, 256, 256);
+  x.fillStyle = '#38bdf8'; x.font = 'bold 104px sans-serif';
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText('CS', 128, 134);
+  try { ttsArtUrl = c.toDataURL('image/png'); } catch (e) {}
+  return ttsArtUrl;
+}
+
+function ttsMediaSet(topic) {
+  if (!('mediaSession' in navigator)) return;
+  if (topic) ttsCurTopic = topic;
+  const ms = navigator.mediaSession;
+  if (ttsCurTopic && window.MediaMetadata) {
+    ms.metadata = new MediaMetadata({
+      title:  (ttsCurTopic.question || '').trim().slice(0, 90),
+      artist: [ttsCurTopic.chTitle, ttsCurTopic.level].filter(Boolean).join(' · '),
+      album:  'CS Study',
+      artwork: [{ src: ttsArt(), sizes: '256x256', type: 'image/png' }]
+    });
+  }
+  ms.playbackState = 'playing';
+  const on = (act, fn) => { try { ms.setActionHandler(act, fn); } catch (e) {} };
+  // 일시정지 중에도 무음 트랙은 계속 돌린다 — 여기서 멈추면 탭이 얼어 재개 버튼이 죽는다
+  on('pause', () => { speechSynthesis.pause();  ms.playbackState = 'paused'; });
+  on('play',  () => { ttsKeepStart(); speechSynthesis.resume(); ms.playbackState = 'playing'; });
+  on('stop',  () => stopTTS());
+  on('nexttrack', () => { const t = ttsCurTopic; if (!t) return; stopTTS(); ttsAdvance(t.id); });
+  on('previoustrack', null);
+}
+
+// 화면이 꺼지는 순간 엔진이 스스로 멈추는 기기가 있어, 숨겨질 때 한 번 되살린다
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && ttsSpeaking()) {
+    ttsKeepStart();
+    setTimeout(() => { if (ttsSpeaking()) speechSynthesis.resume(); }, 300);
+  }
+});
 
 // ── 영문 → 한글 음차 ────────────────────────────────────────────
 // 온디바이스 한국어 TTS 모델은 영어 음소를 제대로 소리내지 못한다(학습된 적이 없다).
@@ -1203,9 +1291,13 @@ function ttsStrip(md) {
     .trim();
 }
 
-// 발화 단위 분할: 문장 경계에서만 자르고, 한 덩어리를 넉넉히 담아 끊김을 줄인다
-const TTS_MAX = 380;
-function ttsChunks(text) {
+// 발화 단위 분할.
+// 문장 여러 개를 한 덩어리로 넘기면 모델이 그것을 '한 문장'으로 읽어버려서
+// 마침표에서 억양이 내려가지도, 숨을 쉬지도 않는다. 그래서 기본값은 문장 하나 = 발화 하나다.
+// 다만 제목·목록 한 줄처럼 짧은 조각까지 따로 떼면 뚝뚝 끊기므로 TTS_MIN 까지는 붙여 읽는다.
+const TTS_MAX = 380;   // 엔진이 한 번에 안전하게 소화하는 상한
+const TTS_MIN = 60;    // 이보다 짧은 조각은 다음 문장과 합친다
+function ttsPieces(text) {
   const pieces = [];
   for (const s of (text.match(/[^.!?。\n]+[.!?。]*\s*|\n/g) || [text])) {
     if (s.length <= TTS_MAX) { pieces.push(s); continue; }
@@ -1214,17 +1306,21 @@ function ttsChunks(text) {
       else for (let i = 0; i < p.length; i += TTS_MAX) pieces.push(p.slice(i, i + TTS_MAX));
     }
   }
+  return pieces;
+}
+function ttsChunks(text) {
+  const limit = ttsPref.gap === 0 ? TTS_MAX : TTS_MIN;   // 짧게 = 예전처럼 길게 묶어 읽기
   const out = [];
   let buf = '';
-  for (const p of pieces) {
-    if (buf && (buf + p).length > TTS_MAX) { out.push(buf.trim()); buf = p; }
+  for (const p of ttsPieces(text)) {
+    if (buf && (buf + p).length > limit) { out.push(buf.trim()); buf = p; }
     else buf += p;
   }
   if (buf.trim()) out.push(buf.trim());
   return out.filter(c => /[가-힣A-Za-z0-9]/.test(c));
 }
 
-function startTTS(text, btn, onDone) {
+function startTTS(text, btn, onDone, topic) {
   // cancel() 직후 speak()하면 첫 발화가 삼켜지는 브라우저가 있어, 필요할 때만 살짝 지연
   const wasActive = speechSynthesis.speaking || speechSynthesis.pending;
   stopTTS();
@@ -1234,12 +1330,17 @@ function startTTS(text, btn, onDone) {
   ttsBtnRef = btn;
   btn.textContent = '⏹ 중지';
   btn.classList.add('on');
+  ttsKeepStart();            // 화면을 꺼도 탭이 얼지 않도록 오디오 포커스를 잡는다
+  ttsMediaSet(topic);        // 잠금화면 미디어 컨트롤
   const voice = ttsVoice();
+  const gapMs = ttsPref.gap === 2 ? 600 : 0;
   let started = false;
   const fire = () => {
     if (session !== ttsSession) return;
     speechSynthesis.resume();          // 일시정지 상태로 남아 있던 경우 대비
-    chunks.forEach(queueChunk);
+    // 간격이 없으면 전부 엔진 큐에 미리 넣는다 — 탭이 뒤로 밀려도 큐는 엔진이 들고 있다
+    if (gapMs) queueChunk(chunks[0], 0);
+    else chunks.forEach(queueChunk);
     // 재생이 시작되지 않을 때 안내만 한다. 여기서 취소하면 안 된다 —
     // 안드로이드 크롬은 speaking/pending 값이 부정확해서, 곧 시작될 발화를 죽인다.
     setTimeout(() => {
@@ -1259,6 +1360,13 @@ function startTTS(text, btn, onDone) {
         if (session !== ttsSession) return;   // 중지되었거나 다른 발화로 교체됨
         stopTTS();
         if (onDone) onDone();
+      };
+    } else if (gapMs) {
+      // 다음 문장을 곧바로 잇지 않고 한 박자 쉰다 (화면 잠금 중에는 타이머가
+      // 1초 단위로 정렬돼 조금 더 길어질 수 있다)
+      u.onend = () => {
+        if (session !== ttsSession) return;
+        setTimeout(() => { if (session === ttsSession) queueChunk(chunks[idx + 1], idx + 1); }, gapMs);
       };
     }
     speechSynthesis.speak(u);
