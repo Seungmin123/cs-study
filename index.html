@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CS Study Dashboard</title>
   <script src="topics.js"></script>
+  <!-- 읽어주기용 영문→한글 음차 사전 (없어도 규칙만으로 동작) -->
+  <script src="tts_dict.js" onerror="void 0"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -931,6 +933,7 @@ function openModal(t, autoplay = false) {
     if (ttsPref.auto) reveal();
     let text = '문제. ' + t.question.trim().replace(/[.!?。]*$/, '.');
     if (revealed && t.answer) text += '\n해설.\n' + ttsStrip(t.answer);
+    text = koreanize(text);   // 영문을 한글 음차로 — 온디바이스 한국어 모델이 읽을 수 있게
     startTTS(text, ttsBtn, () => { if (ttsPref.auto) ttsAdvance(t.id); });
   };
   if (ttsBtn) {
@@ -1027,10 +1030,11 @@ function renderTtsPanel() {
     ? ttsVoices.map(v => `<option value="${esc(v.voiceURI)}"${v.voiceURI===ttsPref.voiceURI?' selected':''}>${esc(ttsLabel(v))}</option>`).join('')
     : '<option value="">사용 가능한 음성 없음</option>';
   const rates = [0.8, 0.9, 1, 1.1, 1.25, 1.4];
-  // Android Chrome은 개별 음성을 노출하지 않고 언어 항목 하나만 준다 — 선택지가 없으면 드롭다운을 숨긴다
-  const multi = ttsVoices.length > 1;
+  // 음성이 하나도 없으면 브라우저가 발화할 대상이 없다는 뜻이라, 개수를 항상 보여준다
+  const multi = ttsVoices.length > 0;
   el.innerHTML = `
-    ${multi ? `<label>목소리 <select id="ttsVoiceSel">${opts}</select></label>` : ''}
+    ${multi ? `<label>목소리 <select id="ttsVoiceSel">${opts}</select></label>`
+            : '<span class="tts-hint">⚠ 브라우저가 감지한 음성 0개</span>'}
     <label>속도 <select id="ttsRateSel">${rates.map(r => `<option value="${r}"${r===ttsPref.rate?' selected':''}>${r}x</option>`).join('')}</select></label>
     <label><input type="checkbox" id="ttsAutoChk"${ttsPref.auto?' checked':''}> 🔁 연속 재생 (끝나면 다음 문제)</label>
     <span class="tts-hint" id="ttsHintMsg"></span>`;
@@ -1059,6 +1063,121 @@ function stopTTS() {
     ttsBtnRef.classList.remove('on');
     ttsBtnRef = null;
   }
+}
+
+// ── 영문 → 한글 음차 ────────────────────────────────────────────
+// 온디바이스 한국어 TTS 모델은 영어 음소를 제대로 소리내지 못한다(학습된 적이 없다).
+// 발화 직전에 한글로 바꿔 넘기면 모델은 한국어만 받게 되고, 개발자가 실제로 읽는 방식과도 맞다.
+const ALPHA_KO = {
+  a:'에이', b:'비', c:'씨', d:'디', e:'이', f:'에프', g:'지', h:'에이치', i:'아이',
+  j:'제이', k:'케이', l:'엘', m:'엠', n:'엔', o:'오', p:'피', q:'큐', r:'알',
+  s:'에스', t:'티', u:'유', v:'브이', w:'더블유', x:'엑스', y:'와이', z:'지'
+};
+// ── 사전에 없는 단어용 폴백 ──────────────────────────────────
+// 사전(tts_dict.js)은 topics.json 의 모든 영문 토큰을 담고 있으므로 여기까지 오는 건
+// 새로 추가된 용어뿐이다. 글자를 하나씩 바꾸면 음절 구조가 없어 못 읽으므로,
+// (자음군 + 모음 + 끝자음) 덩어리로 끊어 한글 음절로 조립한다.
+const CHO_J = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+const JUNG_J = 'ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ';
+const JONG_J = ' ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ';
+function syl(cho, jung, jong) {
+  return String.fromCharCode(0xAC00 +
+    (CHO_J.indexOf(cho) * 21 + JUNG_J.indexOf(jung)) * 28 + JONG_J.indexOf(jong || ' '));
+}
+const ONSET_EN = { b:'ㅂ', c:'ㅋ', d:'ㄷ', f:'ㅍ', g:'ㄱ', h:'ㅎ', j:'ㅈ', k:'ㅋ', l:'ㄹ',
+  m:'ㅁ', n:'ㄴ', p:'ㅍ', q:'ㅋ', r:'ㄹ', s:'ㅅ', t:'ㅌ', v:'ㅂ', w:'ㅇ', x:'ㅋ', y:'ㅇ', z:'ㅈ' };
+const ONSET_DI = { ch:'ㅊ', sh:'ㅅ', th:'ㅅ', ph:'ㅍ', wh:'ㅇ', ck:'ㅋ', kn:'ㄴ', wr:'ㄹ' };
+// 받침으로 붙는 자음 / 따로 음절이 되는 자음 (외래어 표기 관행)
+const CODA_EN = { k:'ㄱ', c:'ㄱ', g:'ㄱ', p:'ㅂ', b:'ㅂ', m:'ㅁ', n:'ㄴ', l:'ㄹ', r:'ㄹ' };
+const TAIL_EN = { t:['ㅌ','ㅡ'], d:['ㄷ','ㅡ'], s:['ㅅ','ㅡ'], z:['ㅈ','ㅡ'], f:['ㅍ','ㅡ'],
+  v:['ㅂ','ㅡ'], x:['ㅅ','ㅡ'], j:['ㅈ','ㅣ'], h:['ㅎ','ㅡ'], w:['ㅜ','ㅡ'], y:['ㅇ','ㅣ'] };
+const VOW_EN = [['eau','ㅗ'],['ough','ㅗ'],['augh','ㅏ'],['ay','ㅔㅣ'],['ai','ㅔㅣ'],['ea','ㅣ'],
+  ['ee','ㅣ'],['ie','ㅣ'],['oa','ㅗ'],['oo','ㅜ'],['ou','ㅏㅜ'],['ow','ㅗㅜ'],['oi','ㅗㅣ'],
+  ['oy','ㅗㅣ'],['au','ㅗ'],['aw','ㅗ'],['ei','ㅔㅣ'],['ey','ㅔㅣ'],['eu','ㅠ'],['ue','ㅜ'],
+  ['ui','ㅜ'],['a','ㅐ'],['e','ㅔ'],['i','ㅣ'],['o','ㅗ'],['u','ㅓ'],['y','ㅣ']];
+// 흔한 접미사: 어간을 사전에서 찾고 접미사만 붙인다 (Handlers → 핸들러 + 스)
+const SUFFIX = [['ing','잉'],['ers','어스'],['er','어'],['ed','드'],['ions','션스'],
+  ['ion','션'],['ies','이스'],['es','스'],['s','스'],['ly','리'],['ness','니스']];
+
+function romajaKo(w) {
+  let s = w.toLowerCase().replace(/[^a-z]/g, '');
+  if (!s) return '';
+  if (s.length > 2 && s.endsWith('e') && !'aeiou'.includes(s[s.length - 2])) s = s.slice(0, -1); // 묵음 e
+  const out = [];
+  let i = 0, pend = [];
+  const flush = () => {                       // 남은 자음: 받침 또는 별도 음절
+    for (const c of pend) {
+      const last = out[out.length - 1];
+      if (CODA_EN[c] && last && (last.charCodeAt(0) - 0xAC00) % 28 === 0) {
+        out[out.length - 1] = String.fromCharCode(last.charCodeAt(0) + JONG_J.indexOf(CODA_EN[c]));
+      } else {
+        const t = TAIL_EN[c] || [ONSET_EN[c] || 'ㅇ', 'ㅡ'];
+        out.push(syl(t[0], t[1]));
+      }
+    }
+    pend = [];
+  };
+  while (i < s.length) {
+    if (s.startsWith('ng', i) && i + 2 >= s.length) { pend.push('n'); i += 2; continue; }
+    const di = ONSET_DI[s.slice(i, i + 2)];
+    const vow = VOW_EN.find(([v]) => s.startsWith(v, i));
+    if (vow) {
+      let [v, jung] = vow;
+      i += v.length;
+      let cho = 'ㅇ';
+      if (pend.length) { cho = ONSET_EN[pend[pend.length - 1]] || 'ㅇ'; pend.pop(); flush(); }
+      if (jung.length === 2) { out.push(syl(cho, jung[0])); out.push(syl('ㅇ', jung[1])); }
+      else out.push(syl(cho, jung));
+    } else if (di) {
+      flush(); pend = [s[i]]; out.push(syl(di, 'ㅡ')); pend = []; i += 2;
+      // 자음 이중자는 뒤 모음과 합쳐야 자연스러우므로 되돌려 처리
+      out.pop(); pend = [];
+      const nv = VOW_EN.find(([v]) => s.startsWith(v, i));
+      if (nv) { i += nv[0].length; out.push(syl(di, nv[1][0])); if (nv[1].length === 2) out.push(syl('ㅇ', nv[1][1])); }
+      else out.push(syl(di, 'ㅡ'));
+    } else {
+      pend.push(s[i]); i += 1;
+    }
+  }
+  flush();
+  return out.join('');
+}
+
+function wordKo(w) {
+  const dict = window.TTS_DICT || {};
+  if (dict[w]) return dict[w];
+  const lower = Object.keys(dict).find(k => k.toLowerCase() === w.toLowerCase());
+  if (lower) return dict[lower];
+  // 대문자 약어(JVM, LRU…)는 알파벳을 하나씩 읽는다
+  if (/^[A-Z][A-Z0-9]{1,5}$/.test(w)) {
+    return w.split('').map(c => ALPHA_KO[c.toLowerCase()] || c).join('');
+  }
+  // CamelCase 는 단어로 쪼개 각각 처리 (LinkedHashMap → Linked + Hash + Map)
+  const parts = w.match(/[A-Z]+(?![a-z])|[A-Z][a-z0-9]*|[a-z0-9]+/g);
+  if (parts && parts.length > 1) return parts.map(wordKo).join('');
+  if (w.length === 1) return ALPHA_KO[w.toLowerCase()] || w;
+  // 접미사만 다른 변형은 어간을 사전에서 찾는다 (Handlers → 핸들러+스)
+  for (const [suf, ko] of SUFFIX) {
+    if (w.length > suf.length + 2 && w.toLowerCase().endsWith(suf)) {
+      const stem = w.slice(0, -suf.length);
+      const hit = dict[stem] || dict[Object.keys(dict).find(k => k.toLowerCase() === stem.toLowerCase()) || ''];
+      if (hit) return hit + ko;
+    }
+  }
+  return romajaKo(w);
+}
+function koreanize(text) {
+  return text
+    // 시간 복잡도 표기: O(1), O(n log n) …
+    .replace(/\bO\(([^)]{1,20})\)/g, (_, inner) => '빅오 ' + inner
+      .replace(/\blog\b/gi, '로그').replace(/\bn\b/g, '엔').replace(/\bm\b/g, '엠')
+      .replace(/\^?2\b/g, '제곱').replace(/\*/g, ' 곱하기 ').replace(/!/g, ' 팩토리얼'))
+    // 영문 토큰 치환 (숫자·밑줄·점을 포함한 식별자까지)
+    .replace(/[A-Za-z][A-Za-z0-9_.+-]*/g, w => {
+      const tail = w.match(/[.+-]+$/);            // 문장부호는 남긴다
+      const core = tail ? w.slice(0, -tail[0].length) : w;
+      return (core ? wordKo(core) : '') + (tail ? tail[0] : '');
+    });
 }
 
 // 마크다운을 읽기 좋은 평문으로: 코드 블록은 건너뛰고 표·서식 기호 제거,
