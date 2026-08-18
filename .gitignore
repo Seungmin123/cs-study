@@ -19,5 +19,20 @@ os_*.json
 net_*.json
 spring_*.json
 
-# 로컬 TTS 데이터셋 (tools/make_dataset.py 산출, 수 GB)
+# 로컬 TTS 음성 제작 산출물 — 전부 재생성 가능하고 수 GB 규모라 제외
+# (gitignore 는 줄 끝 주석을 지원하지 않으므로 주석은 별도 줄에)
+# dataset_*/ : 목소리별 학습 데이터  train/ : 체크포인트·캐시·클론 저장소
+# phone/     : 폰에 넣을 모델 패키지  dumpstate/ : 폰 버그리포트
 dataset/
+dataset_*/
+train/
+phone/
+dumpstate/
+tts_dict_generated.js
+chain.log
+dumpstate*.txt
+
+# 음성 제작 도구·수작업 사전 — 이 맥에서만 쓰는 것이라 저장소에 두지 않는다
+# (tts_dict.js 재생성이나 다른 목소리 제작이 필요하면 로컬에 남아 있는 것을 쓴다)
+tools/
+tts_dict_hand.js
